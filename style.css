@@ -244,7 +244,7 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
     #sideleaf-dialog .cd-header { padding-top: 12px; }
     #sideleaf-dialog .cd-brand > .cd-icon { width: 30px; height: 30px; flex-basis: 30px; padding: 6px; }
     #sideleaf-dialog .cd-tab { font-size: .84em; padding: 6px 8px; }
-    #sideleaf-dialog .cd-sort select { max-width: 6.5em; }
+    #sideleaf-dialog .cd-sort .cd-select-text { max-width: 6.5em; }
     #sideleaf-dialog .cd-card-head { padding: 12px; gap: 10px; }
     #sideleaf-dialog .cd-card-body { padding: 0 12px 12px; }
     #sideleaf-dialog .cd-card .cd-mirror { max-height: none; }
@@ -288,6 +288,9 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog#sideleaf-dialog .cd-select select {
     background: transparent !important; background-image: none !important;
     border: 0 !important; box-shadow: none !important; outline: none !important; min-height: 0;
+    /* The invisible select must cover the whole pill, whatever size rules a theme gives selects. */
+    position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+    min-width: 0 !important; max-width: none !important; max-height: none !important; margin: 0 !important;
 }
 
 /* Message styles (e.g. asset images with fixed widths) never push the reader wider than the screen. */
