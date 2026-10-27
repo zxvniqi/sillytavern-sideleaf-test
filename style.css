@@ -288,7 +288,9 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog#sideleaf-dialog .cd-select select {
     background: transparent !important; background-image: none !important;
     border: 0 !important; box-shadow: none !important; outline: none !important; min-height: 0;
-    /* The invisible select must cover the whole pill, whatever size rules a theme gives selects. */
+}
+/* The invisible select must cover the whole pill, whatever size rules a theme gives selects. */
+#sideleaf-dialog#sideleaf-dialog .cd-select select {
     position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
     min-width: 0 !important; max-width: none !important; max-height: none !important; margin: 0 !important;
 }
