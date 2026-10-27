@@ -131,7 +131,7 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog .cd-folder-tag { display: inline-flex; align-items: center; gap: 3px; margin-right: 6px; padding: 0 6px 0 4px; border-radius: 6px; background: var(--sl-soft); color: var(--sl-fg); }
 #sideleaf-dialog .cd-folder-tag .cd-icon { width: 12px; height: 12px; flex-basis: 12px; }
 #sideleaf-dialog .cd-snippet { margin: 3px 0 0; font-size: .86em; line-height: 1.6; color: color-mix(in srgb, var(--sl-fg) 80%, transparent); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-#sideleaf-dialog .cd-card-side { display: flex; align-items: center; gap: 2px; padding: 8px 8px 0 0; grid-column: 2; grid-row: 1; }
+#sideleaf-dialog .cd-card-side { display: flex; align-items: center; align-self: center; gap: 2px; padding: 0 8px 0 0; grid-column: 2; grid-row: 1; }
 #sideleaf-dialog .cd-card-body { grid-column: 1 / -1; padding: 0 16px 16px; }
 #sideleaf-dialog .cd-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 0 10px; border-top: 1px solid var(--sl-line); }
 #sideleaf-dialog .cd-tools .cd-select:not(.cd-select-compact) { min-height: 34px; min-width: 0; flex-shrink: 1; }

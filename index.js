@@ -960,17 +960,20 @@ function row(item) {
         const expand = iconButton(open ? 'up' : 'down', open ? '접기' : '본문 펼치기', toggle); expand.classList.add('cd-expand');
         expand.setAttribute('aria-expanded', String(open)); side.append(expand);
         if (archive) {
-            const grip = iconButton('grip', '끌어서 순서 변경 · 누르면 위치 지정', () => moveEditor(item)); grip.classList.add('cd-grip');
+            card.dataset.key = item.key;
+            const grip = iconButton('grip', '끌어서 순서 변경 · 누르면 위치 지정', () => { if (!grip.dataset.dragged) moveEditor(item); delete grip.dataset.dragged; }); grip.classList.add('cd-grip');
             grip.disabled = locked; grip.draggable = !locked;
+            // Mouse: the browser's own drag and drop.
             grip.addEventListener('dragstart', event => { event.dataTransfer.setData('text/x-sideleaf', item.key); event.dataTransfer.effectAllowed = 'move'; card.classList.add('cd-dragging'); });
             grip.addEventListener('dragend', () => card.classList.remove('cd-dragging'));
             card.addEventListener('dragover', event => { if (event.dataTransfer.types.includes('text/x-sideleaf')) { event.preventDefault(); card.classList.add('cd-drop-target'); } });
             card.addEventListener('dragleave', () => card.classList.remove('cd-drop-target'));
             card.addEventListener('drop', event => {
                 event.preventDefault(); card.classList.remove('cd-drop-target');
-                const from = event.dataTransfer.getData('text/x-sideleaf'); const ids = archiveItems().map(x => x.key);
-                if (from && from !== item.key && ids.includes(from)) { ids.splice(ids.indexOf(from), 1); ids.splice(ids.indexOf(item.key), 0, from); commit('order', {order:ids}); }
+                dropOn(event.dataTransfer.getData('text/x-sideleaf'), item.key);
             });
+            // Touch and pen: browsers start no drag from a finger, so the finger is followed directly.
+            grip.addEventListener('pointerdown', event => { if (event.pointerType !== 'mouse' && !grip.disabled) touchDrag(event, grip, card, item.key); });
             side.append(grip);
         }
         card.append(side);
@@ -982,6 +985,53 @@ function row(item) {
         card.append(body);
     }
     return card;
+}
+
+// Dropping on a card puts the dragged item in that card's place: above it when moving up, below when moving down.
+function dropOn(from, to) {
+    const ids = archiveItems().map(x => x.key);
+    if (!from || from === to || !ids.includes(from) || !ids.includes(to)) return;
+    const down = ids.indexOf(from) < ids.indexOf(to);
+    ids.splice(ids.indexOf(from), 1);
+    ids.splice(ids.indexOf(to) + (down ? 1 : 0), 0, from);
+    commit('order', {order:ids});
+}
+function touchDrag(start, grip, card, key) {
+    start.preventDefault();
+    const list = card.closest('.cd-list');
+    let target = null, moved = false, scroll = 0, timer = null, lastY = start.clientY;
+    const mark = next => { if (target !== next) { target?.classList.remove('cd-drop-target'); target = next; target?.classList.add('cd-drop-target'); } };
+    const pick = (x, y) => {
+        const under = document.elementFromPoint(x, y)?.closest('.cd-card');
+        mark(under && under !== card && under.dataset.key && list.contains(under) ? under : null);
+    };
+    // Near the top or bottom edge the list scrolls by itself, so far items can be reached.
+    const edgeScroll = () => {
+        if (!scroll) { clearInterval(timer); timer = null; return; }
+        list.scrollTop += scroll; pick(start.clientX, lastY);
+    };
+    const move = event => {
+        if (event.pointerId !== start.pointerId) return;
+        if (!moved && Math.abs(event.clientY - start.clientY) < 6) return;
+        if (!moved) { moved = true; card.classList.add('cd-dragging'); }
+        event.preventDefault();
+        lastY = event.clientY; pick(event.clientX, event.clientY);
+        const box = list.getBoundingClientRect();
+        scroll = event.clientY < box.top + 48 ? -10 : event.clientY > box.bottom - 48 ? 10 : 0;
+        if (scroll && !timer) timer = setInterval(edgeScroll, 16);
+    };
+    const end = event => {
+        if (event.pointerId !== start.pointerId) return;
+        document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', end); document.removeEventListener('pointercancel', end);
+        clearInterval(timer); card.classList.remove('cd-dragging');
+        const dropTarget = target; mark(null);
+        if (!moved) return; // a plain tap still opens "move to position"
+        grip.dataset.dragged = '1'; setTimeout(() => delete grip.dataset.dragged, 400);
+        if (event.type === 'pointerup' && dropTarget) dropOn(key, dropTarget.dataset.key);
+    };
+    document.addEventListener('pointermove', move, {passive: false});
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
 }
 
 async function copyText(text) {
