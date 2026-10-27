@@ -1,0 +1,11 @@
+{
+    "display_name": "별지 · Sideleaf (테스트)",
+    "loading_order": 100,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Sideleaf contributors",
+    "version": "0.9.1-test",
+    "homePage": "https://github.com/zxvniqi/sillytavern-sideleaf"
+}
