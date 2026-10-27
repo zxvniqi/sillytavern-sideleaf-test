@@ -330,7 +330,7 @@ function close(discardEdit = false) {
     if (editing && !discardEdit) { note('편집을 저장하거나 취소한 뒤 닫아주세요.', true); return; }
     clearTimeout(searchTimer);
     dialog?.close(); dialog?.remove(); dialog = null;
-    document.getElementById('sideleaf-chat-style')?.remove();
+    if (mirror) mirror.style.disabled = true;
     clearArchiveCache();
     snapshot = []; selected.clear(); search = ''; editing = null; selectionUi = null;
     reader = false; expanded.clear(); composing = false; versionChoice.clear();
@@ -362,13 +362,14 @@ function open() {
     openedChat = chatIdentity(context());
     view = 'archive'; page = 0; selected.clear(); search = ''; editMode = false; folderView = 'all';
     sortMode = context().accountStorage?.getItem('sideleaf.sort') || sortMode;
+    const appearance = chatAppearance(), styles = measureChatStyles();
     dialog = el('dialog');
     dialog.id = 'sideleaf-dialog';
     dialog.setAttribute('aria-label', '별지');
     dialog.addEventListener('cancel', onCancel);
+    for (const [name, value] of Object.entries(appearance)) dialog.style.setProperty(name, value);
+    applyChatStyles(styles);
     document.body.append(dialog);
-    applyChatAppearance();
-    syncChatStyles();
     render(); dialog.showModal();
 }
 
@@ -755,34 +756,58 @@ function mirrorRule(rule, parent = null) {
 }
 const OWN_STYLE = new URL('./style.css', import.meta.url).href;
 const BASE_PROPS = ['color', 'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing', 'text-shadow', 'text-align', 'text-indent', '-webkit-text-fill-color'];
-function syncChatStyles() {
-    document.getElementById('sideleaf-chat-style')?.remove();
+// The page's sheets other than 별지's own and the <style> blocks inside chat messages (each archived
+// body brings its own).
+function pageSheets() {
+    const sheets = [];
+    for (const sheet of document.styleSheets) {
+        if (sheet.href === OWN_STYLE || sheet.ownerNode?.closest?.('#chat, #sideleaf-dialog')) continue;
+        try { sheets.push([sheet, sheet.cssRules]); } catch { /* cross-origin sheets cannot be read */ }
+    }
+    return sheets;
+}
+// The mirrored rules are kept between openings (switched off while 별지 is closed, so they cost the page
+// nothing) and rebuilt only when the page's styles change, e.g. another theme.
+let mirror = null;
+// Reads only: everything is measured before 별지 adds anything to the page, so opening costs a
+// single style recalculation of the (often large) SillyTavern page instead of several.
+function measureChatStyles() {
     const chat = document.getElementById('chat');
-    if (!chat) return;
-    const css = [];
-    // The text colour and font a message inherits from the page around the chat, measured on a hidden
-    // sample message (prepended so `:last-child` rules never touch the real last message).
-    const probe = el('div', 'mes'), block = el('div', 'mes_block'), text = el('div', 'mes_text');
-    probe.setAttribute('is_user', 'false'); probe.setAttribute('aria-hidden', 'true'); probe.style.display = 'none';
-    block.append(text); probe.append(block); chat.prepend(probe);
+    if (!chat) return null;
+    // The text colour and font a message inherits from the page around the chat: read from a drawn
+    // character message, or from a hidden sample message when the chat has none.
+    let text = chat.querySelector('.mes[is_user="false"] .mes_text') || chat.querySelector('.mes .mes_text'), probe = null;
+    if (!text) {
+        probe = el('div', 'mes'); const block = el('div', 'mes_block'); text = el('div', 'mes_text');
+        probe.setAttribute('is_user', 'false'); probe.setAttribute('aria-hidden', 'true'); probe.style.display = 'none';
+        block.append(text); probe.append(block); chat.prepend(probe); // first, so `:last-child` rules stay put
+    }
+    let base;
     try {
         const computed = getComputedStyle(text);
-        css.push(`:where(#sideleaf-dialog) .cd-rich { ${BASE_PROPS.map(prop => `${prop}: ${computed.getPropertyValue(prop)}`).join('; ')} }`);
-    } finally {
-        probe.remove();
+        base = `:where(#sideleaf-dialog) .cd-rich { ${BASE_PROPS.map(prop => `${prop}: ${computed.getPropertyValue(prop)}`).join('; ')} }`;
+    } finally { probe?.remove(); }
+    const sheets = pageSheets();
+    const signature = `${sheets.length}|${sheets.reduce((sum, [, rules]) => sum + rules.length, 0)}|${document.getElementById('custom-style')?.textContent.length ?? ''}`;
+    const rules = mirror?.signature === signature && mirror.style.isConnected ? null : sheets.flatMap(([, list]) => [...list].flatMap(rule => [mirrorRule(rule)].flat().filter(Boolean)));
+    return { base, signature, rules };
+}
+function applyChatStyles(measured) {
+    if (!measured) return;
+    if (measured.rules) {
+        mirror?.style.remove();
+        const style = el('style'); style.id = 'sideleaf-chat-style'; document.head.append(style);
+        style.sheet.insertRule(measured.base, 0);
+        // Inserted rule by rule: one selector the browser rejects must not drop the rest.
+        for (const text of measured.rules) {
+            try { style.sheet.insertRule(text, style.sheet.cssRules.length); } catch { /* unsupported selector */ }
+        }
+        mirror = { signature: measured.signature, style };
+    } else {
+        mirror.style.sheet.deleteRule(0);
+        mirror.style.sheet.insertRule(measured.base, 0);
     }
-    for (const sheet of document.styleSheets) {
-        // 별지's own sheet, and <style> blocks inside chat messages (each archived body brings its own).
-        if (sheet.href === OWN_STYLE || sheet.ownerNode?.closest?.('#chat, #sideleaf-dialog')) continue;
-        let rules;
-        try { rules = sheet.cssRules; } catch { continue; } // cross-origin sheets cannot be read
-        for (const rule of rules) css.push(...[mirrorRule(rule)].flat().filter(Boolean));
-    }
-    const style = el('style'); style.id = 'sideleaf-chat-style'; document.head.append(style);
-    // Inserted rule by rule: one selector the browser rejects must not drop the rest.
-    for (const text of css) {
-        try { style.sheet.insertRule(text, style.sheet.cssRules.length); } catch { /* unsupported selector */ }
-    }
+    mirror.style.disabled = false;
 }
 
 // Plain text, never parsed as HTML. Quoted passages are wrapped in <q> so they keep the theme's quote colour.
@@ -1227,12 +1252,12 @@ function contrast(a, b) {
     return (light + 0.05) / (dark + 0.05);
 }
 
-// Reading space follows the live chat's computed font and background.
-function applyChatAppearance() {
+// Reading space follows the live chat's computed font and background (read only; open() applies them).
+function chatAppearance() {
     const chat = document.querySelector('#chat');
-    if (!chat) return;
+    if (!chat) return {};
     const text = getComputedStyle(chat.querySelector('.mes_text') || chat);
-    for (const [name, value] of Object.entries({'--sl-chat-color':text.color, '--sl-chat-font':text.fontFamily, '--sl-chat-size':text.fontSize, '--sl-chat-line':text.lineHeight, '--sl-chat-spacing':text.letterSpacing})) dialog.style.setProperty(name, value);
+    const out = {'--sl-chat-color':text.color, '--sl-chat-font':text.fontFamily, '--sl-chat-size':text.fontSize, '--sl-chat-line':text.lineHeight, '--sl-chat-spacing':text.letterSpacing};
     const layers = [];
     let color = '';
     for (let node = chat; node; node = node.parentElement) {
@@ -1253,10 +1278,11 @@ function applyChatAppearance() {
         color = luminance(text.color) < 0.35 ? '#f5f2ec' : '#1f2027';
         layers.length = 0; // the translucent layers were part of what made it unreadable
     }
-    dialog.style.setProperty('--sl-base', color);
-    dialog.style.setProperty('--sl-layers', layers.length ? layers.join(',') : 'none');
+    out['--sl-base'] = color;
+    out['--sl-layers'] = layers.length ? layers.join(',') : 'none';
     const message = chat.querySelector('.mes');
-    if (message) dialog.style.setProperty('--sl-message-bg', getComputedStyle(message).backgroundColor);
+    if (message) out['--sl-message-bg'] = getComputedStyle(message).backgroundColor;
+    return out;
 }
 
 async function archiveFromMessage(button) {
