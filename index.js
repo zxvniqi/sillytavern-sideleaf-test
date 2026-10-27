@@ -348,6 +348,7 @@ function onCancel(event) {
     const jump = dialog.querySelector('.cd-jump');
     if (jump) { jump.remove(); dialog.querySelector('.cd-shade')?.remove(); return; }
     if (reader && !busy) { exitReader(); return; }
+    if (editing === 'settings') { editing = null; render(); return; }
     close();
 }
 
@@ -812,12 +813,12 @@ function itemTools(item, versions, current, refresh, reading = false) {
     tools.append(el('span', 'cd-spacer'));
     if (!reading) tools.append(iconButton('book', '넓은 화면으로 읽기', () => showReader(item), '크게 읽기'));
     const copy = iconButton('copy', '지금 보이는 본문 복사', () => copyText(current.text));
-    const title = iconButton('title', '제목 수정', () => editItem(item, current, true));
-    const body = iconButton('pencil', `지금 보는 ${current.label} 고치기`, () => editItem(item, current));
+    // One editor for title and body (the title field sits above the body).
+    const body = iconButton('pencil', `제목·${current.label} 고치기`, () => editItem(item, current));
     const remove = iconButton('trash', '별지에서 삭제', () => removeItems([item.key]));
     remove.classList.add('cd-danger');
-    title.disabled = body.disabled = remove.disabled = locked;
-    tools.append(copy, title, body);
+    body.disabled = remove.disabled = locked;
+    tools.append(copy, body);
     const drawer = currentDrawer();
     if (drawer.folders?.length) {
         const folder = selectControl('folder', '폴더 옮기기', folderChoices(drawer), folderOf(drawer, item) || NO_FOLDER, value => {
@@ -862,20 +863,28 @@ function folderBar(drawer, locked) {
     return bar;
 }
 function folderEditor(folder = null, ids = []) {
-    if (busy || pending) return;
-    editing = folder?.id ?? NEW_FOLDER;
-    const label = el('label', 'cd-field'); label.append(el('span', 'cd-field-label', '폴더 이름'));
-    const input = el('input', 'cd-input'); input.value = folder?.name || ''; input.maxLength = 40; input.placeholder = '예: 설정 정리, 외전, 이벤트';
-    label.append(input);
-    const cancel = () => { editing = null; render(); };
+    if (busy || pending || dialog.querySelector('.cd-jump')) return;
+    const shade = el('div', 'cd-shade'), popup = el('section', 'cd-jump cd-mini');
+    popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', folder ? '폴더 이름 바꾸기' : '새 폴더');
+    const input = el('input', 'cd-input'); input.value = folder?.name || ''; input.maxLength = 40; input.placeholder = '폴더 이름 (예: 설정 정리, 외전)';
+    input.setAttribute('aria-label', '폴더 이름');
+    const dismiss = () => { shade.remove(); popup.remove(); };
     const save = () => {
-        if (!input.value.trim()) { note('폴더 이름을 입력해주세요.', true); input.focus(); return; }
+        if (!input.value.trim()) { input.focus(); return; }
+        dismiss();
         commit('folder', folder ? {type:'rename', id:folder.id, name:input.value} : {type:'create', name:input.value, ids});
     };
-    input.addEventListener('keydown', event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); save(); } });
-    const hint = ids.length ? `고른 ${ids.length}개 항목을 새 폴더에 넣습니다.` : folder ? '폴더 안의 항목은 그대로입니다.' : '이 채팅의 별지 안에서만 쓰는 폴더입니다. 항목은 펼친 뒤 폴더 칸이나, 편집에서 여러 개 골라 옮길 수 있습니다.';
-    formScreen(folder ? '폴더 이름 바꾸기' : '새 폴더', [label, el('p', 'cd-hint', hint)], cancel, save);
-    input.focus();
+    shade.addEventListener('click', dismiss);
+    input.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); save(); }
+        if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismiss(); }
+    });
+    const ok = iconButton('check', '저장 (Enter)', save, folder ? '바꾸기' : '만들기'); ok.classList.add('cd-primary');
+    const actions = el('div', 'cd-mini-actions'); actions.append(button('취소', dismiss), ok);
+    const hint = ids.length ? el('p', 'cd-hint', `고른 ${ids.length}개 항목을 새 폴더에 넣습니다.`) : null;
+    popup.append(el('h3', 'cd-mini-title', folder ? '폴더 이름 바꾸기' : '새 폴더'), input, ...(hint ? [hint] : []), actions);
+    dialog.append(shade, popup);
+    input.focus(); input.select();
 }
 async function removeFolder(folder) {
     if (isLocked()) return;
@@ -1216,8 +1225,19 @@ function messageButton() {
 }
 // Inside the "…" group when there is one (where extension buttons belong, so themes that fold the
 // row never put it in place of "…"), first in it; otherwise first in the button row.
-function addButton(root) {
-    const target = root && (root.querySelector('.extraMesButtons') || root.querySelector('.mes_buttons'));
+// Whether the actions are folded behind "…" right now: read from a drawn message (theme and settings
+// decide it); before any message is drawn, from SillyTavern's "expand message actions" setting.
+function actionsFolded() {
+    const row = [...document.querySelectorAll('#chat .mes[mesid] .mes_buttons')].at(-1);
+    const hint = row?.querySelector(':scope > .extraMesButtonsHint');
+    if (hint) return getComputedStyle(hint).display !== 'none';
+    return !document.body.classList.contains('expandMessageActions');
+}
+// Folded: first inside the "…" group, where extension buttons belong (so it never takes the place of
+// "…"). Shown inline: first in the whole row, so it stays at the left end.
+function addButton(root, folded = actionsFolded()) {
+    const box = root?.querySelector('.extraMesButtons'), row = root?.querySelector('.mes_buttons');
+    const target = folded && box ? box : row || box;
     if (!target) return;
     // Extensions loading later prepend their own buttons too; move ours back to the front.
     const existing = root.querySelector('.sideleaf-archive-button');
@@ -1225,7 +1245,9 @@ function addButton(root) {
     target.prepend(existing || messageButton());
 }
 function addMessageButtons() {
-    for (const message of document.querySelectorAll('#chat .mes[mesid]')) addButton(message);
+    const folded = actionsFolded();
+    addButton(document.querySelector('#message_template .mes'), folded);
+    for (const message of document.querySelectorAll('#chat .mes[mesid]')) addButton(message, folded);
 }
 
 const SETTINGS_KEY = 'sideleaf';
@@ -1238,6 +1260,7 @@ const settings = () => {
 };
 function applySettings() {
     document.body.classList.toggle('sideleaf-no-message-button', !settings().messageButton);
+    addMessageButtons();
 }
 function settingsScreen() {
     if (busy || pending) return;
@@ -1319,7 +1342,6 @@ function initialize() {
     // Messages drawn before the template had the button (or by builds without a template) catch up here.
     // A short timer instead of requestAnimationFrame: rAF stalls while the tab is in the background.
     const queueButtons = () => { if (buttonsQueued) return; buttonsQueued = true; setTimeout(() => { buttonsQueued = false; addMessageButtons(); }, 16); };
-    addButton(document.querySelector('#message_template .mes')); // every extension has loaded by now
     for (const event of ['CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MORE_MESSAGES_LOADED']) on(event, queueButtons);
     addMessageButtons();
     // Preview/dry-run generation also emits STARTED, sometimes without ENDED.
