@@ -379,7 +379,7 @@ function header(ctx, drawer, locked) {
     names.append(el('h2', '', '별지'), chatName); brand.append(names);
     const actions = el('div', 'cd-actions');
     if (drawer && view === 'archive' && drawer.items.length) {
-        const toggle = iconButton(editMode ? 'check' : 'edit', editMode ? '편집 끝내기' : '선택 복원·순서 변경·백업', () => { editMode = !editMode; selected.clear(); render(); }, editMode ? '완료' : '편집');
+        const toggle = iconButton(editMode ? 'check' : 'edit', editMode ? '편집 끝내기' : '여러 개 골라 복원·삭제·폴더 이동·순서 변경', () => { editMode = !editMode; selected.clear(); render(); }, editMode ? '완료' : '편집');
         toggle.classList.toggle('cd-primary', editMode); toggle.disabled = locked; toggle.setAttribute('aria-pressed', String(editMode));
         actions.append(toggle);
     }
