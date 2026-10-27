@@ -1084,8 +1084,9 @@ function formScreen(heading, fields, cancel, onSave) {
     dialog.replaceChildren(bar, form, footer, status);
 }
 
-// Edits replace the version being read (original, translation, ...) in place; it is then marked "(수정)".
-function editItem(item, version, titleOnly = false) {
+// One editor for the title and the version being read (original, translation, ...). The body is
+// replaced in place and then marked "(수정)".
+function editItem(item, version) {
     if (busy || pending) return;
     editing = item.key;
     clearTimeout(searchTimer);
@@ -1095,24 +1096,20 @@ function editItem(item, version, titleOnly = false) {
     const titleLabel = el('label', 'cd-field'); titleLabel.append(el('span', 'cd-field-label', '제목'));
     const title = el('input', 'cd-input'); title.value = item.title || ''; title.maxLength = 160; title.placeholder = '비워두면 본문 앞부분을 제목으로 씁니다';
     titleLabel.append(title);
-    const fields = [titleLabel];
     // The editor shows the stored text with its markup, so saving keeps formatting intact.
     const body = el('textarea', 'cd-editor'); body.value = version.raw;
-    if (!titleOnly) {
-        const bodyLabel = el('label', 'cd-field cd-field-grow'); bodyLabel.append(el('span', 'cd-field-label', `${version.label.replace(/\(수정\)$/, '')} 고치기`), body);
-        const hint = version.key === 'original'
-            ? '원문을 바로 고칩니다. 대화로 복원하면 고친 내용이 돌아갑니다.'
-            : '지금 보고 있는 본문을 바로 고칩니다.';
-        fields.push(bodyLabel, el('p', 'cd-hint', hint));
-    }
+    const bodyLabel = el('label', 'cd-field cd-field-grow'); bodyLabel.append(el('span', 'cd-field-label', `${version.label.replace(/\(수정\)$/, '')} 고치기`), body);
+    const hint = version.key === 'original'
+        ? '원문을 바로 고칩니다. 대화로 복원하면 고친 내용이 돌아갑니다.'
+        : '지금 보고 있는 본문을 바로 고칩니다.';
     const cancel = () => { editing = null; readerReturn = null; if (wasReader) showReader(item); else render(); };
     const save = () => {
-        const change = titleOnly || body.value === version.raw ? undefined : {key:version.key, text:body.value};
+        const change = body.value === version.raw ? undefined : {key:version.key, text:body.value};
         if (title.value.trim() === (item.title || '') && !change) { cancel(); return; }
         commit('edit', {id:item.key, title:title.value, change});
     };
-    formScreen(titleOnly ? '제목 수정' : '본문 수정', fields, cancel, save);
-    (titleOnly ? title : body).focus();
+    formScreen('제목·본문 수정', [titleLabel, bodyLabel, el('p', 'cd-hint', hint)], cancel, save);
+    body.focus();
 }
 
 function exitReader() {
@@ -1320,8 +1317,12 @@ function addButton(root, folded = actionsFolded()) {
     if (existing && existing === target.firstElementChild) return;
     target.prepend(existing || messageButton());
 }
-function addMessageButtons() {
-    const folded = actionsFolded();
+// Reading the theme's layout makes the browser recalculate the page's styles, which is slow on a busy
+// SillyTavern page. So it is read only when the chat is (re)drawn or the setting changes, not for every
+// new message; new messages already carry the button from the message template.
+let folded = null;
+function addMessageButtons(measure = false) {
+    if (measure || folded === null) folded = actionsFolded();
     addButton(document.querySelector('#message_template .mes'), folded);
     for (const message of document.querySelectorAll('#chat .mes[mesid]')) addButton(message, folded);
 }
@@ -1336,7 +1337,7 @@ const settings = () => {
 };
 function applySettings() {
     document.body.classList.toggle('sideleaf-no-message-button', !settings().messageButton);
-    addMessageButtons();
+    addMessageButtons(true);
 }
 function settingsScreen() {
     if (busy || pending) return;
@@ -1417,9 +1418,11 @@ function initialize() {
     let buttonsQueued = false;
     // Messages drawn before the template had the button (or by builds without a template) catch up here.
     // A short timer instead of requestAnimationFrame: rAF stalls while the tab is in the background.
-    const queueButtons = () => { if (buttonsQueued) return; buttonsQueued = true; setTimeout(() => { buttonsQueued = false; addMessageButtons(); }, 16); };
-    for (const event of ['CHAT_CHANGED', 'CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MORE_MESSAGES_LOADED']) on(event, queueButtons);
-    addMessageButtons();
+    let measureNext = false;
+    const queueButtons = measure => { measureNext ||= measure === true; if (buttonsQueued) return; buttonsQueued = true; setTimeout(() => { buttonsQueued = false; addMessageButtons(measureNext); measureNext = false; }, 16); };
+    for (const event of ['CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_UPDATED', 'MESSAGE_SWIPED', 'MORE_MESSAGES_LOADED']) on(event, () => queueButtons(false));
+    on('CHAT_CHANGED', () => queueButtons(true));
+    addMessageButtons(true);
     // Preview/dry-run generation also emits STARTED, sometimes without ENDED.
     // Read the core state instead of keeping a potentially stale event latch.
     // Only the generation-dependent controls change; rebuilding the list would reset scroll and drags.
