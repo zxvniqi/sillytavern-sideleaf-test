@@ -145,6 +145,11 @@ function chatLabel(name, ctx = context()) {
     const prefix = `${ctx.characters?.[ctx.characterId]?.name ?? ''} - `;
     return name.startsWith(prefix) && name.length > prefix.length ? name.slice(prefix.length) : name;
 }
+// Chips and tags show the first five characters; the full name is on hover and in the move prompt.
+function shortChatLabel(name) {
+    const chars = Array.from(chatLabel(name));
+    return chars.length > 5 ? `${chars.slice(0, 5).join('')}…` : chars.join('');
+}
 async function loadOtherChats(ctx) {
     const key = chatIdentity(ctx), character = ctx.characters[ctx.characterId];
     others = { key, status: 'loading', items: [] };
@@ -937,6 +942,10 @@ function itemTools(item, versions, current, refresh, reading = false) {
 
 async function openOtherChat(name) {
     if (isLocked()) return;
+    const text = `「${chatLabel(name)}」 채팅으로 이동하시겠습니까?`;
+    const ctx = context();
+    const ok = typeof ctx.callGenericPopup === 'function' && ctx.POPUP_TYPE?.CONFIRM !== undefined ? Boolean(await ctx.callGenericPopup(text, ctx.POPUP_TYPE.CONFIRM)) : globalThis.confirm(text);
+    if (!ok) return;
     close(true);
     try { await context().openCharacterChat(name); }
     catch (error) { globalThis.toastr?.error('채팅을 열지 못했습니다.', '별지'); console.error('[Sideleaf]', error); }
@@ -963,7 +972,7 @@ function chatBar(drawer, otherItems, locked) {
     for (const item of otherItems) counts.set(item.otherChat, (counts.get(item.otherChat) || 0) + 1);
     if (chatView !== 'all' && chatView !== 'this' && !counts.has(chatView)) chatView = 'all';
     chips.append(chip('all', '전체', drawer.items.length + otherItems.length), chip('this', '이 채팅', drawer.items.length, 'chat'));
-    for (const [name, count] of counts) { const node = chip(name, chatLabel(name), count, 'chat'); node.title = name; chips.append(node); }
+    for (const [name, count] of counts) { const node = chip(name, shortChatLabel(name), count, 'chat'); node.title = name; chips.append(node); }
     bar.append(chips);
     return bar;
 }
@@ -1070,7 +1079,7 @@ function row(item) {
         const folderName = !otherChat(item) && folderView === 'all' && currentDrawer().folders?.find(folder => folder.id === item.folder)?.name;
         // Names sit in their own span so a long one is cut short with "…" (full name on hover).
         if (folderName) { const tag = el('span', 'cd-folder-tag'); tag.append(icon('folder'), el('span', 'cd-tag-text', folderName)); tag.title = folderName; line.append(tag); }
-        if (otherChat(item)) { const tag = el('span', 'cd-folder-tag cd-chat-tag'); tag.append(icon('chat'), el('span', 'cd-tag-text', chatLabel(item.otherChat))); tag.title = item.otherChat; line.append(tag); }
+        if (otherChat(item)) { const tag = el('span', 'cd-folder-tag cd-chat-tag'); tag.append(icon('chat'), el('span', 'cd-tag-text', shortChatLabel(item.otherChat))); tag.title = item.otherChat; line.append(tag); }
         line.append(meta.join(' · '));
         main.append(line);
     } else {
