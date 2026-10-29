@@ -330,6 +330,13 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog .cd-choice input { margin-top: 3px; flex-shrink: 0; }
 #sideleaf-dialog .cd-choice-text { display: flex; flex-direction: column; gap: 1px; }
 #sideleaf-dialog .cd-choice-text small { font-size: .84em; line-height: 1.5; color: var(--sl-muted); }
-#sideleaf-dialog .cd-chat-tag { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
-#sideleaf-dialog .cd-chips .cd-chip > span:not(.cd-count) { max-width: 12em; overflow: hidden; text-overflow: ellipsis; }
+/* Long chat and folder names end in "…" instead of stretching chips and tags. */
+#sideleaf-dialog .cd-folder-tag { max-width: 100%; vertical-align: bottom; }
+#sideleaf-dialog .cd-tag-text, #sideleaf-dialog .cd-chips .cd-chip > span:not(.cd-count) { display: inline-block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+#sideleaf-dialog .cd-tag-text { max-width: 12em; }
+#sideleaf-dialog .cd-chips .cd-chip > span:not(.cd-count) { max-width: 9em; }
+@media (max-width: 600px) {
+    #sideleaf-dialog .cd-tag-text { max-width: 9em; }
+    #sideleaf-dialog .cd-chips .cd-chip > span:not(.cd-count) { max-width: 7em; }
+}
 #sideleaf-dialog .cd-retry .cd-button { min-height: 0; padding: 0 6px; font-size: 1em; text-decoration: underline; }

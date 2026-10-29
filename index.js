@@ -1068,8 +1068,9 @@ function row(item) {
         if (versions.length > 1) meta.push(current.label);
         const line = el('span', 'cd-card-meta');
         const folderName = !otherChat(item) && folderView === 'all' && currentDrawer().folders?.find(folder => folder.id === item.folder)?.name;
-        if (folderName) { const tag = el('span', 'cd-folder-tag'); tag.append(icon('folder'), folderName); line.append(tag); }
-        if (otherChat(item)) { const tag = el('span', 'cd-folder-tag cd-chat-tag'); tag.append(icon('chat'), chatLabel(item.otherChat)); tag.title = item.otherChat; line.append(tag); }
+        // Names sit in their own span so a long one is cut short with "…" (full name on hover).
+        if (folderName) { const tag = el('span', 'cd-folder-tag'); tag.append(icon('folder'), el('span', 'cd-tag-text', folderName)); tag.title = folderName; line.append(tag); }
+        if (otherChat(item)) { const tag = el('span', 'cd-folder-tag cd-chat-tag'); tag.append(icon('chat'), el('span', 'cd-tag-text', chatLabel(item.otherChat))); tag.title = item.otherChat; line.append(tag); }
         line.append(meta.join(' · '));
         main.append(line);
     } else {
