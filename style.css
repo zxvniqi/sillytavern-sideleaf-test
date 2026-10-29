@@ -318,3 +318,10 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog .cd-setting h3 { margin: 0; font-size: .82em; font-weight: 700; color: var(--sl-muted); letter-spacing: .02em; }
 #sideleaf-dialog .cd-toggle { display: flex; align-items: center; gap: 10px; margin: 0; cursor: pointer; font-size: .92em; }
 #sideleaf-dialog .cd-toggle input { appearance: auto; width: 18px; height: 18px; margin: 0; accent-color: var(--sl-ink); cursor: pointer; }
+#sideleaf-dialog .cd-choice { align-items: flex-start; }
+#sideleaf-dialog .cd-choice input { margin-top: 3px; flex-shrink: 0; }
+#sideleaf-dialog .cd-choice-text { display: flex; flex-direction: column; gap: 1px; }
+#sideleaf-dialog .cd-choice-text small { font-size: .84em; line-height: 1.5; color: var(--sl-muted); }
+#sideleaf-dialog .cd-chat-tag { max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+#sideleaf-dialog .cd-chips .cd-chip > span:not(.cd-count) { max-width: 12em; overflow: hidden; text-overflow: ellipsis; }
+#sideleaf-dialog .cd-retry .cd-button { min-height: 0; padding: 0 6px; font-size: 1em; text-decoration: underline; }
