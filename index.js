@@ -512,14 +512,15 @@ function render() {
         const sort = selectControl('sort', '정렬', [['desc','최신순'],['asc','오래된순'],['manual','직접 정한 순서']], sortMode, setSort, 'cd-sort');
         sort.querySelector('select').disabled = locked; toolbar.append(sort);
     }
-    const chatChips = view === 'archive' && scoped && !editMode;
+    // Chat chips only once another chat has something; until then the usual folder chips stay.
+    const chatChips = view === 'archive' && scoped && !editMode && (otherItems.length > 0 || others?.status !== 'ready');
     if (view === 'archive' && drawer.items.length && !drawer.folders?.length && !chatChips) {
         const add = iconButton('folder', '폴더 만들기 · 보관 항목을 폴더로 나눠 정리합니다', () => folderEditor(null, editMode ? [...selected] : []));
         add.disabled = locked; toolbar.append(add);
     }
     controls.append(tabs, toolbar);
     if (chatChips) {
-        controls.append(chatBar(drawer, otherItems, locked));
+        if (otherItems.length) controls.append(chatBar(drawer, otherItems, locked));
         if (others?.status === 'loading') controls.append(el('p', 'cd-hint', '이 캐릭터의 다른 채팅에서 별지를 찾는 중…'));
         if (others?.status === 'error') {
             const retry = el('p', 'cd-hint cd-retry', '다른 채팅의 별지를 불러오지 못했습니다. ');
