@@ -2,6 +2,8 @@
 
 /* Entry points outside the dialog */
 #sideleaf-wand { cursor: pointer; }
+/* Nothing kept yet: the star's outline only (fill see-through, stroke in the icon's own colour). */
+#sideleaf-wand .sideleaf-empty-star::before { -webkit-text-fill-color: transparent; -webkit-text-stroke: 1.6px currentColor; paint-order: stroke; }
 body.sideleaf-no-message-button .sideleaf-archive-button { display: none !important; }
 
 /* Dialog shell: colours come from the live chat, surfaces are tints of its text colour. */

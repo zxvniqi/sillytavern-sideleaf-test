@@ -1461,8 +1461,8 @@ function updateWandIcon() {
     const entry = document.getElementById('sideleaf-wand'), glyph = entry?.querySelector('.extensionsMenuExtensionButton');
     if (!glyph) return;
     const ctx = context(), count = storedCount(ctx) + otherCount(ctx);
-    glyph.classList.toggle('fa-solid', count > 0);
-    glyph.classList.toggle('fa-regular', count === 0);
+    // SillyTavern bundles only the solid icon font, so the empty star is the solid one drawn as an outline.
+    glyph.classList.toggle('sideleaf-empty-star', count === 0);
     entry.title = count ? '별지 보관함 열기' : '별지 보관함 열기 (아직 보관한 메시지 없음)';
 }
 function applySettings() {
