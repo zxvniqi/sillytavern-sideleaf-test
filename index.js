@@ -1473,7 +1473,8 @@ function showReaderList() {
     const entry = item => {
         const node = button('', () => {
             const scroller = dialog.querySelector('.cd-scrolling');
-            if (scroller?.scrollReader) { dismiss(); scroller.scrollReader(item.key); } else showReader(item);
+            // Close, jump, then focus: the page is laid out once (focusing first would restyle it twice).
+            if (scroller?.scrollReader) { shade.remove(); popup.remove(); scroller.scrollReader(item.key); scroller.focus({ preventScroll: true }); } else showReader(item);
         }, 'cd-jump-item');
         const text = chosenVersion(item, versionsOf(item)).text;
         node.append(el('strong', '', itemTitle(item, text)), el('span', 'cd-card-meta', `${speaker(item.message)} · #${item.index}`));
