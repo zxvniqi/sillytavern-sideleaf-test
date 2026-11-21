@@ -1495,22 +1495,26 @@ function showReaderList() {
     let timer;
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { offset = 0; draw(); }, 150); });
     const head = el('div', 'cd-jump-head'); head.append(field, iconButton('close', '목록 닫기', dismiss));
-    popup.classList.add('cd-measuring'); // full height while the first page is measured
+    // A page fits the screen without scrolling. The fit is measured once per screen height (at full popup
+    // height); read before anything changes, the height costs no extra restyle of the page.
+    const height = dialog.clientHeight, fitted = listFit?.height === height;
+    if (fitted) perPage = listFit.perPage; else popup.classList.add('cd-measuring');
+    const at = Math.max(0, readerItems.findIndex(x => x.key === readerKey));
+    offset = Math.floor(at / perPage) * perPage;
     popup.append(head, list); dialog.append(shade, popup); draw();
-    // Fit a page to the screen: measure the room at full popup height, then open on the current item's page.
-    const shown = [...list.querySelectorAll('.cd-jump-item')];
-    if (shown.length) {
-        const each = shown.reduce((sum, node) => sum + node.offsetHeight + 4, 0) / shown.length;
-        const room = list.clientHeight - 48; // the page buttons
-
-        perPage = Math.max(3, Math.floor(room / each));
-        offset = Math.floor(Math.max(0, readerItems.findIndex(x => x.key === readerKey)) / perPage) * perPage;
-        draw();
+    if (!fitted) {
+        const shown = [...list.querySelectorAll('.cd-jump-item')];
+        if (shown.length) {
+            const each = shown.reduce((sum, node) => sum + node.offsetHeight + 4, 0) / shown.length;
+            const room = list.clientHeight - 48; // the page buttons
+            perPage = Math.max(3, Math.floor(room / each)); listFit = { height, perPage };
+            offset = Math.floor(at / perPage) * perPage; draw();
+        }
+        popup.classList.remove('cd-measuring');
     }
-    popup.classList.remove('cd-measuring');
-    list.querySelector('[aria-current="true"]')?.scrollIntoView({block:'center'});
     input.focus();
 }
+let listFit = null;
 
 function moveEditor(item) {
     if (busy || pending) return;
