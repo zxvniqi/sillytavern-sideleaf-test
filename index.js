@@ -454,15 +454,14 @@ function open() {
 let themeWatch = null;
 function watchTheme() {
     themeWatch?.stop();
-    let timer;
-    const refresh = () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-            if (!dialog?.open) return;
-            for (const [name, value] of Object.entries(chatAppearance())) dialog.style.setProperty(name, value);
-            applyChatStyles(measureChatStyles());
-        }, 450);
+    let timers = [];
+    const measure = () => {
+        if (!dialog?.open) return;
+        for (const [name, value] of Object.entries(chatAppearance())) dialog.style.setProperty(name, value);
+        applyChatStyles(measureChatStyles());
     };
+    // Once soon, and again after slower theme scripts have repainted the messages.
+    const refresh = () => { timers.forEach(clearTimeout); timers = [setTimeout(measure, 400), setTimeout(measure, 1800)]; };
     const own = node => node.id === 'sideleaf-chat-style' || node.parentNode?.id === 'sideleaf-chat-style';
     const observer = new MutationObserver(records => { if (records.some(r => !own(r.target) && ![...r.addedNodes, ...r.removedNodes].every(own) || r.type === 'attributes')) refresh(); });
     observer.observe(document.documentElement, { attributes: true });
@@ -470,7 +469,7 @@ function watchTheme() {
     observer.observe(document.head, { childList: true, subtree: true, characterData: true });
     const scheme = matchMedia('(prefers-color-scheme: dark)');
     scheme.addEventListener('change', refresh);
-    themeWatch = { stop: () => { clearTimeout(timer); observer.disconnect(); scheme.removeEventListener('change', refresh); themeWatch = null; } };
+    themeWatch = { stop: () => { timers.forEach(clearTimeout); observer.disconnect(); scheme.removeEventListener('change', refresh); themeWatch = null; } };
 }
 
 function header(ctx, drawer, locked) {
