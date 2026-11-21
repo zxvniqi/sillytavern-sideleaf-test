@@ -252,7 +252,9 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
     #sideleaf-dialog .cd-header { padding-top: 12px; }
     #sideleaf-dialog .cd-brand > .cd-icon { width: 30px; height: 30px; flex-basis: 30px; padding: 6px; }
     #sideleaf-dialog .cd-tab { font-size: .84em; padding: 6px 8px; }
-    #sideleaf-dialog .cd-sort .cd-select-text { max-width: 6.5em; }
+    #sideleaf-dialog .cd-sort { padding: 0 8px; gap: 4px; }
+    #sideleaf-dialog .cd-sort .cd-select-text { max-width: 6.5em; font-size: .82em; }
+    #sideleaf-dialog .cd-sort .cd-select-text + .cd-icon { display: none; }
     #sideleaf-dialog .cd-card-head { padding: 12px; gap: 10px; }
     #sideleaf-dialog .cd-card-body { padding: 0 12px 12px; }
     #sideleaf-dialog .cd-card .cd-mirror { max-height: none; }

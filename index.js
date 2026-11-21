@@ -620,7 +620,7 @@ function render() {
             remove = iconButton('trash', '선택한 항목을 별지에서 삭제');
             remove.addEventListener('click', () => removeItems([...selected]));
             remove.classList.add('cd-danger');
-            const exportPick = selectControl('download', '고른 항목 내보내기', [['', '내보내기…'], ['json', '백업 파일로 받기 (.json)'], ['txt', '텍스트로 받기 (.txt)']], '', value => {
+            const exportPick = selectControl('download', '고른 항목 내보내기', [['', '내보내기…'], ['json', '.json'], ['txt', '.txt']], '', value => {
                 const picked = archiveItems().filter(item => selected.has(item.key));
                 if (value) exportItems(picked, value);
                 exportPick.querySelector('select').value = '';
@@ -1247,6 +1247,13 @@ function exitReader() {
 
 // Large reading: one item at a time (paging), or every item one after another in one scroll.
 const readMode = () => context().accountStorage?.getItem('sideleaf.readMode') === 'scroll' ? 'scroll' : 'page';
+// The read-mode toggle leads the right-hand group of the reader's tools.
+function withReadMode(tools, item) {
+    const spacer = tools.querySelector(':scope > .cd-spacer');
+    if (spacer) spacer.after(readModeButton(item)); else tools.prepend(readModeButton(item));
+    return tools;
+}
+
 function readModeButton(item) {
     const scroll = readMode() === 'scroll';
     const toggle = iconButton(scroll ? 'pages' : 'scroll', scroll ? '한 장씩 넘겨보기' : '스크롤로 이어보기', () => {
@@ -1288,7 +1295,7 @@ function showReader(item) {
         return nav;
     };
     const foot = el('footer', 'cd-reader-foot'); foot.append(makeNav());
-    bar.append(back, makeNav(), itemTools(item, versions, current, () => showReader(item), true), readModeButton(item));
+    bar.append(back, makeNav(), withReadMode(itemTools(item, versions, current, () => showReader(item), true), item));
     const content = el('div', 'cd-reading-content');
     const sheet = el('article', 'cd-page');
     const meta = [speaker(item.message), `#${item.index}`, new Date(item.archivedAt).toLocaleDateString(), current.label];
@@ -1368,13 +1375,13 @@ function showScrollReader(item) {
             nav.previous.disabled = index <= 0; nav.next.disabled = index >= readerItems.length - 1;
         }
         const versions = versionsOf(it), current = chosenVersion(it, versions);
-        tools.replaceChildren(itemTools(it, versions, current, () => {
+        tools.replaceChildren(withReadMode(itemTools(it, versions, current, () => {
             // Another version of this item: redraw just its sheet.
             const entry = sheets.get(it.key); const now = chosenVersion(it, versionsOf(it));
             entry.filled = true; entry.body.replaceWith(entry.body = contentBlock(it, now));
             entry.sheet.querySelector('.cd-page-meta').textContent = [speaker(it.message), `#${it.index}`, new Date(it.archivedAt).toLocaleDateString(), now.label].join(' · ');
             setCurrent(it.key);
-        }, true));
+        }, true), it));
     };
     // A chosen item stays current until the reader scrolls by hand: images and screens still loading above it
     // shift the page, and the last items are too short to reach the top.
@@ -1403,7 +1410,7 @@ function showScrollReader(item) {
         event.preventDefault(); goTo(event.key === 'ArrowRight' ? 1 : -1);
     });
     const foot = el('footer', 'cd-reader-foot'); foot.append(makeNav());
-    bar.append(back, makeNav(), tools, readModeButton(item));
+    bar.append(back, makeNav(), tools);
     dialog.replaceChildren(bar, content, foot, statusLine());
     if (pageCount > 1) {
         const pager = el('div', 'cd-pagination cd-scroll-pages');
@@ -1436,7 +1443,7 @@ function showReaderList() {
     const input = el('input', 'cd-search'); input.type = 'search'; input.placeholder = '목록에서 찾기'; input.setAttribute('aria-label', '목록에서 찾기');
     field.append(input);
     const list = el('div', 'cd-jump-items');
-    let offset = 0;
+    let offset = 0, perPage = PAGE_SIZE;
     const entry = item => {
         const node = button('', () => {
             const scroller = dialog.querySelector('.cd-scrolling');
@@ -1449,19 +1456,30 @@ function showReaderList() {
     };
     const draw = () => {
         const found = readerItems.filter(item => matchesQuery(item, input.value));
-        list.replaceChildren(...found.slice(offset, offset + PAGE_SIZE).map(entry));
+        list.replaceChildren(...found.slice(offset, offset + perPage).map(entry));
         if (!found.length) list.append(el('p', 'cd-hint', '찾는 항목이 없습니다.'));
-        if (found.length <= PAGE_SIZE) return;
+        if (found.length <= perPage) return;
         const pages = el('div', 'cd-pagination');
-        const previous = iconButton('left', '목록 이전 페이지', () => { offset -= PAGE_SIZE; draw(); }); previous.disabled = offset === 0;
-        const next = iconButton('right', '목록 다음 페이지', () => { offset += PAGE_SIZE; draw(); }); next.disabled = offset + PAGE_SIZE >= found.length;
-        pages.append(previous, el('span', 'cd-page-count', `${offset / PAGE_SIZE + 1} / ${Math.ceil(found.length / PAGE_SIZE)}`), next);
+        const previous = iconButton('left', '목록 이전 페이지', () => { offset -= perPage; draw(); }); previous.disabled = offset === 0;
+        const next = iconButton('right', '목록 다음 페이지', () => { offset += perPage; draw(); }); next.disabled = offset + perPage >= found.length;
+        pages.append(previous, el('span', 'cd-page-count', `${offset / perPage + 1} / ${Math.ceil(found.length / perPage)}`), next);
         list.append(pages);
     };
     let timer;
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { offset = 0; draw(); }, 150); });
     const head = el('div', 'cd-jump-head'); head.append(field, iconButton('close', '목록 닫기', dismiss));
     popup.append(head, list); dialog.append(shade, popup); draw();
+    // Fit a page to the screen: measure the room at full popup height, then open on the current item's page.
+    const shown = [...list.querySelectorAll('.cd-jump-item')];
+    if (shown.length) {
+        popup.style.height = getComputedStyle(popup).maxHeight; list.style.flex = '1';
+        const each = shown.reduce((sum, node) => sum + node.offsetHeight + 4, 0) / shown.length;
+        const room = list.clientHeight - 48; // the page buttons
+        popup.style.height = ''; list.style.flex = '';
+        perPage = Math.max(3, Math.floor(room / each));
+        offset = Math.floor(Math.max(0, readerItems.findIndex(x => x.key === readerKey)) / perPage) * perPage;
+        draw();
+    }
     list.querySelector('[aria-current="true"]')?.scrollIntoView({block:'center'});
     input.focus();
 }
@@ -1697,9 +1715,9 @@ function settingsScreen() {
         ...(ctx.groupId != null ? [el('p', 'cd-hint', '그룹 채팅에서는 언제나 채팅별로 보여 줍니다.')] : [])));
     const split = ctx.chatMetadata?.[KEY]?.version === 2;
     const backup = iconButton('download', '활성 채팅과 별지 전체를 JSONL 한 파일로 내려받기', exportArchive, '통합 백업 받기');
-    const exportAll = iconButton('archive', '이 채팅의 별지 전체를 백업 파일(.json)로 내려받습니다. 불러오기로 다시 넣을 수 있습니다.', () => exportItems(archiveItems(), 'json'), '백업 받기');
-    const exportText = iconButton('doc', '이 채팅의 별지 전체를 읽기용 텍스트 파일(.txt)로 내려받습니다.', () => exportItems(archiveItems(), 'txt'), '텍스트로 받기');
-    const importButton = iconButton('upload', '별지 백업 파일(.json)을 이 채팅의 별지에 더합니다.', importArchive, '백업 불러오기');
+    const exportAll = iconButton('archive', '이 채팅의 별지 전체를 백업 파일(.json)로 내려받습니다. 불러오기로 다시 넣을 수 있습니다.', () => exportItems(archiveItems(), 'json'), '.json');
+    const exportText = iconButton('doc', '이 채팅의 별지 전체를 읽기용 텍스트 파일(.txt)로 내려받습니다.', () => exportItems(archiveItems(), 'txt'), '.txt');
+    const importButton = iconButton('upload', '별지 백업 파일(.json)을 이 채팅의 별지에 더합니다.', importArchive, '불러오기');
     exportAll.disabled = exportText.disabled = !currentDrawer().items.length;
     const fileRow = el('div', 'cd-setting-row'); fileRow.append(exportAll, exportText, importButton);
     body.append(section('별지만 내보내기 · 불러오기', fileRow, el('p', 'cd-hint', '일부만 내보내려면 편집에서 항목을 고른 뒤 내보내기를 누릅니다. 불러온 항목은 이 채팅의 별지에 더해집니다.')));
