@@ -361,7 +361,7 @@ const SAVED_NOTES = {
     order: '변경 사항을 저장했습니다.',
     folder: '폴더를 정리했습니다.',
     delete: '별지에서 삭제했습니다.',
-    import: '별지 파일을 불러왔습니다.',
+    import: '백업을 불러왔습니다.',
 };
 
 async function finishSave() {
@@ -1642,8 +1642,8 @@ function importArchive() {
         const file = input.files?.[0]; input.remove();
         if (!file) return;
         let data;
-        try { data = JSON.parse(await file.text()); } catch { note('별지 파일을 읽지 못했습니다.', true); return; }
-        if (data?.format !== 'sideleaf-archive-1') { note('별지 파일이 아닙니다. 별지에서 내보낸 .json 파일을 골라주세요.', true); return; }
+        try { data = JSON.parse(await file.text()); } catch { note('백업 파일을 읽지 못했습니다.', true); return; }
+        if (data?.format !== 'sideleaf-archive-1') { note('별지 백업 파일이 아닙니다. 백업 받기로 만든 .json 파일을 골라주세요.', true); return; }
         let added;
         try { added = importPlan([], currentDrawer(), data, id).affected.length; } catch (error) { note(error.message, true); return; }
         // Everything in the file is already here: nothing to save.
