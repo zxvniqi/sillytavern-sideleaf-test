@@ -358,3 +358,7 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 /* Measuring the reader list: as tall as it may get (height is capped by max-height). */
 #sideleaf-dialog .cd-jump.cd-measuring { height: 100%; }
 #sideleaf-dialog .cd-jump.cd-measuring .cd-jump-items { flex: 1; }
+/* Reader list: page buttons stay below the scrolling list. */
+#sideleaf-dialog .cd-jump-pager { flex-shrink: 0; }
+#sideleaf-dialog .cd-jump-pager:empty { display: none; }
+#sideleaf-dialog .cd-jump-pager .cd-pagination { padding: 2px 0 0; }

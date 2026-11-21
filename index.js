@@ -1469,6 +1469,8 @@ function showReaderList() {
     const input = el('input', 'cd-search'); input.type = 'search'; input.placeholder = '목록에서 찾기'; input.setAttribute('aria-label', '목록에서 찾기');
     field.append(input);
     const list = el('div', 'cd-jump-items');
+    // Page buttons sit under the list, outside its scroll, so long titles never push them out of view.
+    const pager = el('div', 'cd-jump-pager');
     let offset = 0, perPage = PAGE_SIZE;
     const entry = item => {
         const node = button('', () => {
@@ -1484,14 +1486,15 @@ function showReaderList() {
     };
     const draw = () => {
         const found = readerItems.filter(item => matchesQuery(item, input.value));
-        list.replaceChildren(...found.slice(offset, offset + perPage).map(entry));
+        list.replaceChildren(...found.slice(offset, offset + perPage).map(entry)); list.scrollTop = 0;
         if (!found.length) list.append(el('p', 'cd-hint', '찾는 항목이 없습니다.'));
+        pager.replaceChildren();
         if (found.length <= perPage) return;
         const pages = el('div', 'cd-pagination');
         const previous = iconButton('left', '목록 이전 페이지', () => { offset -= perPage; draw(); }); previous.disabled = offset === 0;
         const next = iconButton('right', '목록 다음 페이지', () => { offset += perPage; draw(); }); next.disabled = offset + perPage >= found.length;
         pages.append(previous, el('span', 'cd-page-count', `${offset / perPage + 1} / ${Math.ceil(found.length / perPage)}`), next);
-        list.append(pages);
+        pager.append(pages);
     };
     let timer;
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { offset = 0; draw(); }, 150); });
@@ -1502,12 +1505,12 @@ function showReaderList() {
     if (fitted) perPage = listFit.perPage; else popup.classList.add('cd-measuring');
     const at = Math.max(0, readerItems.findIndex(x => x.key === readerKey));
     offset = Math.floor(at / perPage) * perPage;
-    popup.append(head, list); dialog.append(shade, popup); draw();
+    popup.append(head, list, pager); dialog.append(shade, popup); draw();
     if (!fitted) {
         const shown = [...list.querySelectorAll('.cd-jump-item')];
         if (shown.length) {
             const each = shown.reduce((sum, node) => sum + node.offsetHeight + 4, 0) / shown.length;
-            const room = list.clientHeight - 48; // the page buttons
+            const room = list.clientHeight - (pager.childElementCount ? 0 : 48); // room for page buttons once they appear
             perPage = Math.max(3, Math.floor(room / each)); listFit = { height, perPage };
             offset = Math.floor(at / perPage) * perPage; draw();
         }
