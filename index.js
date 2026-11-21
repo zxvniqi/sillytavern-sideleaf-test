@@ -1462,7 +1462,7 @@ function showReaderList() {
     if (dialog.querySelector('.cd-jump')) return;
     const popup = el('section', 'cd-jump'); popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '메시지 목록');
     const shade = el('div', 'cd-shade');
-    const dismiss = () => { dialog.querySelector('.cd-reading-content')?.focus(); shade.remove(); popup.remove(); };
+    const dismiss = () => { shade.remove(); popup.remove(); dialog.querySelector('.cd-reading-content')?.focus(); };
     shade.addEventListener('click', dismiss);
     popup.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismiss(); } });
     const field = el('label', 'cd-search-field'); field.append(icon('search'));
@@ -1473,9 +1473,9 @@ function showReaderList() {
     const entry = item => {
         const node = button('', () => {
             const scroller = dialog.querySelector('.cd-scrolling');
-            // Focus moves off the list's search field before anything changes (removing a focused field
-            // restyles the page), then close and jump: the page is restyled and laid out once.
-            if (scroller?.scrollReader) { scroller.focus({ preventScroll: true }); shade.remove(); popup.remove(); scroller.scrollReader(item.key); } else showReader(item);
+            // Close, jump, then focus: the page is laid out once (focusing first would restyle it twice, and
+            // blurring the search field first runs the page's own blur handlers).
+            if (scroller?.scrollReader) { shade.remove(); popup.remove(); scroller.scrollReader(item.key); scroller.focus({ preventScroll: true }); } else showReader(item);
         }, 'cd-jump-item');
         const text = chosenVersion(item, versionsOf(item)).text;
         node.append(el('strong', '', itemTitle(item, text)), el('span', 'cd-card-meta', `${speaker(item.message)} · #${item.index}`));
