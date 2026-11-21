@@ -1,5 +1,6 @@
 export const KEY = 'sideleaf_v1';
-export const PAGE_SIZE = 30;
+// Lists (archive, message picker, reader list, scroll reading) show this many items per page.
+export const PAGE_SIZE = 10;
 
 export function readDrawer(metadata) {
     const data = metadata?.[KEY];

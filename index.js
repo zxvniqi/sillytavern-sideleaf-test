@@ -620,7 +620,7 @@ function render() {
             remove = iconButton('trash', '선택한 항목을 별지에서 삭제');
             remove.addEventListener('click', () => removeItems([...selected]));
             remove.classList.add('cd-danger');
-            const exportPick = selectControl('download', '고른 항목 내보내기', [['', '내보내기…'], ['json', '별지 파일 (.json)'], ['txt', '텍스트 (.txt)']], '', value => {
+            const exportPick = selectControl('download', '고른 항목 내보내기', [['', '내보내기…'], ['json', '백업 파일로 받기 (.json)'], ['txt', '텍스트로 받기 (.txt)']], '', value => {
                 const picked = archiveItems().filter(item => selected.has(item.key));
                 if (value) exportItems(picked, value);
                 exportPick.querySelector('select').value = '';
@@ -1288,7 +1288,7 @@ function showReader(item) {
         return nav;
     };
     const foot = el('footer', 'cd-reader-foot'); foot.append(makeNav());
-    bar.append(back, readModeButton(item), makeNav(), itemTools(item, versions, current, () => showReader(item), true));
+    bar.append(back, makeNav(), itemTools(item, versions, current, () => showReader(item), true), readModeButton(item));
     const content = el('div', 'cd-reading-content');
     const sheet = el('article', 'cd-page');
     const meta = [speaker(item.message), `#${item.index}`, new Date(item.archivedAt).toLocaleDateString(), current.label];
@@ -1331,7 +1331,12 @@ function showScrollReader(item) {
         const current = chosenVersion(entry.item, versionsOf(entry.item));
         entry.body.replaceWith(entry.body = contentBlock(entry.item, current));
     };
-    for (const it of readerItems) {
+    // One page of items at a time; the counter still counts across all of them.
+    const at = readerItems.findIndex(x => x.key === item.key), pageNo = Math.floor(Math.max(at, 0) / PAGE_SIZE);
+    const pageCount = Math.ceil(readerItems.length / PAGE_SIZE);
+    const pageItems = readerItems.slice(pageNo * PAGE_SIZE, (pageNo + 1) * PAGE_SIZE);
+    for (const it of pageItems) {
+        if (sheets.size) content.append(el('hr', 'cd-page-divider'));
         const current = chosenVersion(it, versionsOf(it));
         const sheet = el('article', 'cd-page'); sheet.dataset.key = it.key;
         const meta = [speaker(it.message), `#${it.index}`, new Date(it.archivedAt).toLocaleDateString(), current.label];
@@ -1376,7 +1381,11 @@ function showScrollReader(item) {
     let pinned = false;
     const scrollTo = key => { fill(key); pinned = true; sheets.get(key)?.sheet.scrollIntoView({ block: 'start' }); setCurrent(key); };
     for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) content.addEventListener(type, () => { pinned = false; }, { passive: true });
-    const goTo = step => { const index = readerItems.findIndex(x => x.key === readerKey); const next = readerItems[index + step]; if (next) scrollTo(next.key); };
+    const goTo = step => {
+        const index = readerItems.findIndex(x => x.key === readerKey), next = readerItems[index + step];
+        if (!next) return;
+        if (sheets.has(next.key)) scrollTo(next.key); else showScrollReader(next); // the next page
+    };
     // The item at the top of the screen is the current one (for the counter and the tools).
     let scrollTimer;
     content.addEventListener('scroll', () => {
@@ -1394,9 +1403,16 @@ function showScrollReader(item) {
         event.preventDefault(); goTo(event.key === 'ArrowRight' ? 1 : -1);
     });
     const foot = el('footer', 'cd-reader-foot'); foot.append(makeNav());
-    bar.append(back, readModeButton(item), makeNav(), tools);
+    bar.append(back, makeNav(), tools, readModeButton(item));
     dialog.replaceChildren(bar, content, foot, statusLine());
-    content.scrollReader = scrollTo;
+    if (pageCount > 1) {
+        const pager = el('div', 'cd-pagination cd-scroll-pages');
+        const previous = iconButton('left', '이전 페이지', () => showScrollReader(readerItems[(pageNo - 1) * PAGE_SIZE])); previous.disabled = pageNo === 0;
+        const next = iconButton('right', '다음 페이지', () => showScrollReader(readerItems[(pageNo + 1) * PAGE_SIZE])); next.disabled = pageNo >= pageCount - 1;
+        pager.append(previous, el('span', 'cd-page-count', `${pageNo + 1} / ${pageCount}`), next);
+        content.append(pager);
+    }
+    content.scrollReader = key => { if (sheets.has(key)) scrollTo(key); else { const it = readerItems.find(x => x.key === key); if (it) showScrollReader(it); } };
     scrollTo(item.key);
     content.focus({ preventScroll: true });
 }
@@ -1681,9 +1697,9 @@ function settingsScreen() {
         ...(ctx.groupId != null ? [el('p', 'cd-hint', '그룹 채팅에서는 언제나 채팅별로 보여 줍니다.')] : [])));
     const split = ctx.chatMetadata?.[KEY]?.version === 2;
     const backup = iconButton('download', '활성 채팅과 별지 전체를 JSONL 한 파일로 내려받기', exportArchive, '통합 백업 받기');
-    const exportAll = iconButton('download', '이 채팅의 별지 전체를 별지 파일로 내려받기', () => exportItems(archiveItems(), 'json'), '별지 파일');
-    const exportText = iconButton('copy', '이 채팅의 별지 전체를 텍스트 파일로 내려받기', () => exportItems(archiveItems(), 'txt'), '텍스트');
-    const importButton = iconButton('upload', '별지 파일을 이 채팅의 별지에 더하기', importArchive, '불러오기');
+    const exportAll = iconButton('archive', '이 채팅의 별지 전체를 백업 파일(.json)로 내려받습니다. 불러오기로 다시 넣을 수 있습니다.', () => exportItems(archiveItems(), 'json'), '백업 받기');
+    const exportText = iconButton('doc', '이 채팅의 별지 전체를 읽기용 텍스트 파일(.txt)로 내려받습니다.', () => exportItems(archiveItems(), 'txt'), '텍스트로 받기');
+    const importButton = iconButton('upload', '별지 백업 파일(.json)을 이 채팅의 별지에 더합니다.', importArchive, '백업 불러오기');
     exportAll.disabled = exportText.disabled = !currentDrawer().items.length;
     const fileRow = el('div', 'cd-setting-row'); fileRow.append(exportAll, exportText, importButton);
     body.append(section('별지만 내보내기 · 불러오기', fileRow, el('p', 'cd-hint', '일부만 내보내려면 편집에서 항목을 고른 뒤 내보내기를 누릅니다. 불러온 항목은 이 채팅의 별지에 더해집니다.')));

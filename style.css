@@ -347,7 +347,8 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 /* Settings: archive-only file buttons in one row */
 #sideleaf-dialog .cd-setting-row { display: flex; flex-wrap: wrap; gap: 6px; }
 /* Large reading, scroll mode: items one after another */
-#sideleaf-dialog .cd-scrolling .cd-page + .cd-page { margin-top: 18px; }
+#sideleaf-dialog .cd-scrolling .cd-page-divider { border: 0; border-top: 1px solid color-mix(in srgb, var(--sl-fg) 30%, transparent); margin: 22px 6% 18px; height: 0; }
+#sideleaf-dialog .cd-scroll-pages { margin-top: 14px; }
 #sideleaf-dialog .cd-page-pending { min-height: 160px; }
 #sideleaf-dialog .cd-tools-slot { display: contents; }
 /* Reader list: entries keep their height when the keyboard shrinks the popup (they overlapped before) */
