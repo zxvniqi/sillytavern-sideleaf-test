@@ -457,7 +457,7 @@ function watchTheme() {
     let timers = [];
     const measure = () => {
         if (!dialog?.open) return;
-        for (const [name, value] of Object.entries(chatAppearance())) dialog.style.setProperty(name, value);
+        for (const [name, value] of Object.entries(chatAppearance(true))) dialog.style.setProperty(name, value);
         applyChatStyles(measureChatStyles());
     };
     // Once soon, and again after slower theme scripts have repainted the messages.
@@ -1411,7 +1411,8 @@ function showScrollReader(item) {
     // A chosen item stays current until the reader scrolls by hand: images and screens still loading above it
     // shift the page, and the last items are too short to reach the top.
     let pinned = false;
-    const scrollTo = key => { fill(key); pinned = true; sheets.get(key)?.sheet.scrollIntoView({ block: 'start' }); setCurrent(key); };
+    // Changes first, then the scroll: one layout of the page instead of two.
+    const scrollTo = key => { fill(key); pinned = true; setCurrent(key); sheets.get(key)?.sheet.scrollIntoView({ block: 'start' }); };
     for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) content.addEventListener(type, () => { pinned = false; }, { passive: true });
     const goTo = step => {
         const index = readerItems.findIndex(x => x.key === readerKey), next = readerItems[index + step];
@@ -1493,18 +1494,19 @@ function showReaderList() {
     let timer;
     input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => { offset = 0; draw(); }, 150); });
     const head = el('div', 'cd-jump-head'); head.append(field, iconButton('close', '목록 닫기', dismiss));
+    popup.classList.add('cd-measuring'); // full height while the first page is measured
     popup.append(head, list); dialog.append(shade, popup); draw();
     // Fit a page to the screen: measure the room at full popup height, then open on the current item's page.
     const shown = [...list.querySelectorAll('.cd-jump-item')];
     if (shown.length) {
-        popup.style.height = getComputedStyle(popup).maxHeight; list.style.flex = '1';
         const each = shown.reduce((sum, node) => sum + node.offsetHeight + 4, 0) / shown.length;
         const room = list.clientHeight - 48; // the page buttons
-        popup.style.height = ''; list.style.flex = '';
+
         perPage = Math.max(3, Math.floor(room / each));
         offset = Math.floor(Math.max(0, readerItems.findIndex(x => x.key === readerKey)) / perPage) * perPage;
         draw();
     }
+    popup.classList.remove('cd-measuring');
     list.querySelector('[aria-current="true"]')?.scrollIntoView({block:'center'});
     input.focus();
 }
@@ -1539,7 +1541,7 @@ function contrast(a, b) {
 }
 
 // Reading space follows the live chat's computed font and background (read only; open() applies them).
-function chatAppearance() {
+function chatAppearance(settle = false) {
     const chat = document.querySelector('#chat');
     if (!chat) return {};
     const text = getComputedStyle(chat.querySelector('.mes_text') || chat);
@@ -1567,12 +1569,13 @@ function chatAppearance() {
     out['--sl-base'] = color;
     out['--sl-layers'] = layers.length ? layers.join(',') : 'none';
     const message = chat.querySelector('.mes');
-    if (message) {
-        // Read the settled colour: a theme switch may still be fading the message (its transition is paused for the read).
+    if (message && settle) {
+        // Right after a theme switch the message may still be fading: pause its transition for the read.
+        // (Only then: the write makes the read restyle the whole page.)
         const transition = message.style.transition; message.style.transition = 'none';
         out['--sl-message-bg'] = getComputedStyle(message).backgroundColor;
         message.style.transition = transition;
-    }
+    } else if (message) out['--sl-message-bg'] = getComputedStyle(message).backgroundColor;
     return out;
 }
 

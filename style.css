@@ -355,3 +355,6 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog .cd-tools-slot { display: contents; }
 /* Reader list: entries keep their height when the keyboard shrinks the popup (they overlapped before) */
 #sideleaf-dialog .cd-jump-items > * { flex-shrink: 0; }
+/* Measuring the reader list: as tall as it may get (height is capped by max-height). */
+#sideleaf-dialog .cd-jump.cd-measuring { height: 100%; }
+#sideleaf-dialog .cd-jump.cd-measuring .cd-jump-items { flex: 1; }
