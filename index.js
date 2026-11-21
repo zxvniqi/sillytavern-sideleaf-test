@@ -402,6 +402,7 @@ function close(discardEdit = false) {
     if (busy || pending) { note('저장을 확인한 뒤 닫아주세요.', true); return; }
     if (editing && !discardEdit) { note('편집을 저장하거나 취소한 뒤 닫아주세요.', true); return; }
     clearTimeout(searchTimer);
+    themeWatch?.stop();
     dialog?.close(); dialog?.remove(); dialog = null;
     if (mirror) mirror.style.disabled = true;
     clearArchiveCache();
@@ -445,6 +446,31 @@ function open() {
     applyChatStyles(styles);
     document.body.append(dialog);
     render(); dialog.showModal();
+    watchTheme();
+}
+
+// A theme switched while 별지 is open (a theme class or attribute on the page, a new theme sheet, the
+// system's dark mode) is picked up again, after the page's own colour transitions have settled.
+let themeWatch = null;
+function watchTheme() {
+    themeWatch?.stop();
+    let timer;
+    const refresh = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            if (!dialog?.open) return;
+            for (const [name, value] of Object.entries(chatAppearance())) dialog.style.setProperty(name, value);
+            applyChatStyles(measureChatStyles());
+        }, 450);
+    };
+    const own = node => node.id === 'sideleaf-chat-style' || node.parentNode?.id === 'sideleaf-chat-style';
+    const observer = new MutationObserver(records => { if (records.some(r => !own(r.target) && ![...r.addedNodes, ...r.removedNodes].every(own) || r.type === 'attributes')) refresh(); });
+    observer.observe(document.documentElement, { attributes: true });
+    observer.observe(document.body, { attributes: true });
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    const scheme = matchMedia('(prefers-color-scheme: dark)');
+    scheme.addEventListener('change', refresh);
+    themeWatch = { stop: () => { clearTimeout(timer); observer.disconnect(); scheme.removeEventListener('change', refresh); themeWatch = null; } };
 }
 
 function header(ctx, drawer, locked) {
@@ -506,7 +532,7 @@ function render() {
     const toolbar = el('div', 'cd-toolbar');
     const field = el('label', 'cd-search-field'); field.append(icon('search'));
     const input = el('input', 'cd-search'); input.type = 'search'; input.value = search; input.disabled = locked;
-    input.placeholder = view === 'archive' ? '제목·내용·이름으로 찾기' : '메시지 내용·이름으로 찾기'; input.setAttribute('aria-label', input.placeholder);
+    input.placeholder = view === 'archive' ? '검색' : '메시지 내용·이름으로 찾기'; input.setAttribute('aria-label', input.placeholder);
     const updateSearch = () => {
         clearTimeout(searchTimer);
         if (composing) return;
