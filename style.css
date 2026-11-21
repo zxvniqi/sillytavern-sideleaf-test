@@ -340,3 +340,15 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
     #sideleaf-dialog .cd-chips .cd-chip > span:not(.cd-count) { max-width: 7em; }
 }
 #sideleaf-dialog .cd-retry .cd-button { min-height: 0; padding: 0 6px; font-size: 1em; text-decoration: underline; }
+/* Search scope (통합 · 제목 · 본문) at the end of the search field */
+#sideleaf-dialog .cd-scope { position: relative; display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; margin-left: 2px; padding-left: 8px; border-left: 1px solid var(--sl-line); color: var(--sl-muted); font-size: .82em; white-space: nowrap; cursor: pointer; }
+#sideleaf-dialog .cd-scope .cd-icon { width: 12px; height: 12px; flex-basis: 12px; }
+#sideleaf-dialog#sideleaf-dialog .cd-scope select { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; min-width: 0 !important; max-width: none !important; margin: 0 !important; padding: 0 !important; opacity: 0; appearance: none; -webkit-appearance: none; border: 0 !important; background: transparent !important; box-shadow: none !important; cursor: pointer; }
+/* Settings: archive-only file buttons in one row */
+#sideleaf-dialog .cd-setting-row { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Large reading, scroll mode: items one after another */
+#sideleaf-dialog .cd-scrolling .cd-page + .cd-page { margin-top: 18px; }
+#sideleaf-dialog .cd-page-pending { min-height: 160px; }
+#sideleaf-dialog .cd-tools-slot { display: contents; }
+/* Reader list: entries keep their height when the keyboard shrinks the popup (they overlapped before) */
+#sideleaf-dialog .cd-jump-items > * { flex-shrink: 0; }

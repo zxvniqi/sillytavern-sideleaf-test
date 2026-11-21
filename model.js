@@ -206,6 +206,42 @@ export function editPlan(chat, drawer, itemId, title, change, idFactory, now = D
     return { chat: chat.slice(), drawer: { ...drawer, revision: idFactory(), items } };
 }
 
+// A file of archived items only (all or some), independent of any chat. Folders travel by name.
+export const ARCHIVE_FORMAT = 'sideleaf-archive-1';
+export function exportArchiveData(drawer, items, now = Date.now()) {
+    const used = new Set(items.map(item => folderOf(drawer, item)).filter(Boolean));
+    const folders = (drawer.folders || []).filter(folder => used.has(folder.id));
+    return { format: ARCHIVE_FORMAT, exportedAt: now, folders, items: items.map(item => structuredClone(item)) };
+}
+// Adds the items of such a file with new ids. Items already here (same message and archive time) are skipped,
+// so importing the same file twice adds nothing; folders join an existing folder of the same name.
+export function importPlan(chat, drawer, data, idFactory) {
+    if (data?.format !== ARCHIVE_FORMAT || !Array.isArray(data.items)) throw new Error('별지 파일이 아닙니다.');
+    if (data.items.some(item => !item?.message || typeof item.message !== 'object')) throw new Error('별지 파일 일부가 손상되어 불러오지 않았습니다.');
+    const folders = [...(drawer.folders || [])];
+    const folderIds = new Map();
+    for (const folder of Array.isArray(data.folders) ? data.folders : []) {
+        if (typeof folder?.id !== 'string' || typeof folder?.name !== 'string') continue;
+        const same = folders.find(existing => existing.name === folder.name);
+        if (same) folderIds.set(folder.id, same.id);
+        else { const id = idFactory(); folders.push({ id, name: folder.name.slice(0, 40) }); folderIds.set(folder.id, id); }
+    }
+    const seen = new Set(drawer.items.map(item => `${item.archivedAt}\u0000${JSON.stringify(item.message)}`));
+    const added = [];
+    for (const source of data.items) {
+        const key = `${source.archivedAt}\u0000${JSON.stringify(source.message)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const { id: _, folder, ...rest } = structuredClone(source);
+        const item = { ...rest, id: idFactory(), archivedAt: Number.isFinite(source.archivedAt) ? source.archivedAt : Date.now() };
+        if (folderIds.has(folder)) item.folder = folderIds.get(folder);
+        added.push(item);
+    }
+    const next = { ...drawer, revision: idFactory(), items: [...drawer.items, ...added] };
+    if (folders.length) next.folders = folders;
+    return { chat: chat.slice(), drawer: next, affected: added };
+}
+
 export function deletePlan(chat, drawer, ids, idFactory) {
     const picked = new Set(ids);
     const items = drawer.items.filter(item => !picked.has(item.id));

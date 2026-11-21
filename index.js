@@ -1,4 +1,4 @@
-import { KEY, PAGE_SIZE, readDrawer, itemTitle, archivePlan, restorePlan, chatIdentity, preview, readingVersions, editPlan, deletePlan, orderedItems, reorderPlan, folderPlan, folderOf } from './model.js';
+import { KEY, PAGE_SIZE, readDrawer, itemTitle, archivePlan, restorePlan, chatIdentity, preview, readingVersions, editPlan, deletePlan, orderedItems, reorderPlan, folderPlan, folderOf, exportArchiveData, importPlan } from './model.js';
 import { icon } from './icons.js';
 import { installQrSource } from './qr-source.js';
 import { readableText, fullDetailsText } from './reading-text.js';
@@ -197,11 +197,18 @@ function scopedItems() {
     const sign = sortMode === 'asc' ? 1 : -1;
     return [...own, ...rest].map((item, i) => ({ item, i })).sort((a, b) => sign * (a.item.archivedAt - b.item.archivedAt) || a.i - b.i).map(x => x.item);
 }
-function matchesQuery(item, raw) {
+// scope: 'all' (title, name and body), 'title' (the title as shown, so untitled items match their opening) or 'body'.
+let searchScope = 'all';
+function matchesQuery(item, raw, scope = 'all') {
     const query = raw.trim().toLocaleLowerCase();
-    return !query || [item.title, item.message.name, ...readingVersions(item).map(v=>v.text)].some(text => typeof text === 'string' && text.toLocaleLowerCase().includes(query));
+    if (!query) return true;
+    const bodies = readingVersions(item).map(v => v.text);
+    const fields = scope === 'title' ? [itemTitle(item, versionsOf(item)[0]?.text ?? '')]
+        : scope === 'body' ? bodies
+        : [item.title, item.message.name, ...bodies];
+    return fields.some(text => typeof text === 'string' && text.toLocaleLowerCase().includes(query));
 }
-const matchesSearch = item => matchesQuery(item, search);
+const matchesSearch = item => matchesQuery(item, search, view === 'archive' ? searchScope : 'all');
 const isLocked = () => busy || Boolean(pending);
 // Selections are message indexes, so any chat change since the list was drawn invalidates them.
 const chatChanged = ctx => snapshot.length !== ctx.chat.length || snapshot.some((message, i) => message !== ctx.chat[i]);
@@ -274,6 +281,7 @@ function makePlan(kind, chat, drawer, edit) {
         case 'migrate': return { chat: chat.slice(), drawer: { ...drawer, revision: id() } };
         case 'order': return reorderPlan(chat, drawer, edit.order, id);
         case 'folder': return folderPlan(chat, drawer, edit, id);
+        case 'import': return importPlan(chat, drawer, edit.data, id);
         case 'edit': return editPlan(chat, drawer, edit.id, edit.title, edit.change, id);
         case 'delete': return deletePlan(chat, drawer, edit?.ids ?? [...selected], id);
         case 'archive': return archivePlan(chat, drawer, [...selected], id);
@@ -353,6 +361,7 @@ const SAVED_NOTES = {
     order: '변경 사항을 저장했습니다.',
     folder: '폴더를 정리했습니다.',
     delete: '별지에서 삭제했습니다.',
+    import: '별지 파일을 불러왔습니다.',
 };
 
 async function finishSave() {
@@ -426,6 +435,7 @@ function open() {
     openedChat = chatIdentity(context());
     view = 'archive'; page = 0; selected.clear(); search = ''; editMode = false; folderView = 'all'; chatView = 'all'; others = null;
     sortMode = context().accountStorage?.getItem('sideleaf.sort') || sortMode;
+    searchScope = context().accountStorage?.getItem('sideleaf.searchScope') || 'all';
     const appearance = chatAppearance(), styles = measureChatStyles();
     dialog = el('dialog');
     dialog.id = 'sideleaf-dialog';
@@ -512,7 +522,9 @@ function render() {
     input.addEventListener('input', updateSearch);
     input.addEventListener('compositionstart', () => { composing = true; clearTimeout(searchTimer); });
     input.addEventListener('compositionend', () => { composing = false; updateSearch(); });
-    field.append(input); toolbar.append(field);
+    field.append(input);
+    if (view === 'archive') field.append(searchScopeControl(locked));
+    toolbar.append(field);
     if (view === 'archive' && total > 1) {
         const sort = selectControl('sort', '정렬', [['desc','최신순'],['asc','오래된순'],['manual','직접 정한 순서']], sortMode, setSort, 'cd-sort');
         sort.querySelector('select').disabled = locked; toolbar.append(sort);
@@ -608,14 +620,19 @@ function render() {
             remove = iconButton('trash', '선택한 항목을 별지에서 삭제');
             remove.addEventListener('click', () => removeItems([...selected]));
             remove.classList.add('cd-danger');
-            side.append(el('span', 'cd-spacer'), move, remove);
+            const exportPick = selectControl('download', '고른 항목 내보내기', [['', '내보내기…'], ['json', '별지 파일 (.json)'], ['txt', '텍스트 (.txt)']], '', value => {
+                const picked = archiveItems().filter(item => selected.has(item.key));
+                if (value) exportItems(picked, value);
+                exportPick.querySelector('select').value = '';
+            }, 'cd-export', true);
+            side.append(el('span', 'cd-spacer'), exportPick, move, remove);
             toEnd = iconButton('append', '선택한 메시지를 현재 대화 맨 끝에 붙이기', () => commit('restore', {place:'end'}), '채팅 끝에');
             main.append(toEnd);
         }
         main.append(action);
         footer.classList.add(view === 'archive' ? 'cd-footer-edit' : 'cd-footer-select');
         footer.append(side, main);
-        selectionUi = { count, action, toEnd, remove, move, none, generating };
+        selectionUi = { count, action, toEnd, remove, move, none, generating, exportPick: view === 'archive' ? footer.querySelector('.cd-export') : null };
         parts.push(footer);
     }
     parts.push(status);
@@ -643,6 +660,7 @@ function updateSelection() {
     if (selectionUi.none) selectionUi.none.disabled = !selected.size || locked;
     if (selectionUi.remove) selectionUi.remove.disabled = !selected.size || locked;
     if (selectionUi.move) selectionUi.move.querySelector('select').disabled = !selected.size || locked;
+    if (selectionUi.exportPick) selectionUi.exportPick.querySelector('select').disabled = !selected.size || locked;
 }
 
 // Archived bodies are formatted like the chat (markdown, quotes, regex display scripts),
@@ -1227,7 +1245,18 @@ function exitReader() {
     reader = false; readerKey = null; dialog.classList.remove('cd-reading'); render();
 }
 
-function showReader(item) {
+// Large reading: one item at a time (paging), or every item one after another in one scroll.
+const readMode = () => context().accountStorage?.getItem('sideleaf.readMode') === 'scroll' ? 'scroll' : 'page';
+function readModeButton(item) {
+    const scroll = readMode() === 'scroll';
+    const toggle = iconButton(scroll ? 'pages' : 'scroll', scroll ? '한 장씩 넘겨보기' : '스크롤로 이어보기', () => {
+        context().accountStorage?.setItem('sideleaf.readMode', scroll ? 'page' : 'scroll');
+        showReader(readerItems.find(x => x.key === readerKey) || item);
+    });
+    toggle.classList.add('cd-read-mode');
+    return toggle;
+}
+function prepareReader(item) {
     clearTimeout(searchTimer);
     const revision = currentDrawer().revision;
     // Rebuild whenever the item is missing too, so paging never shows "0 / 0".
@@ -1237,6 +1266,10 @@ function showReader(item) {
         if (!readerItems.some(x => x.key === item.key)) readerItems = [item];
         readerRevision = revision;
     }
+}
+function showReader(item) {
+    if (readMode() === 'scroll') { showScrollReader(item); return; }
+    prepareReader(item);
     reader = true;
     readerKey = item.key;
     dialog.classList.add('cd-reading');
@@ -1255,7 +1288,7 @@ function showReader(item) {
         return nav;
     };
     const foot = el('footer', 'cd-reader-foot'); foot.append(makeNav());
-    bar.append(back, makeNav(), itemTools(item, versions, current, () => showReader(item), true));
+    bar.append(back, readModeButton(item), makeNav(), itemTools(item, versions, current, () => showReader(item), true));
     const content = el('div', 'cd-reading-content');
     const sheet = el('article', 'cd-page');
     const meta = [speaker(item.message), `#${item.index}`, new Date(item.archivedAt).toLocaleDateString(), current.label];
@@ -1285,6 +1318,84 @@ function showReader(item) {
     content.focus({preventScroll:true});
 }
 
+function showScrollReader(item) {
+    prepareReader(item);
+    reader = true; readerKey = item.key;
+    dialog.classList.add('cd-reading');
+    const content = el('div', 'cd-reading-content cd-scrolling');
+    const sheets = new Map();
+    const fill = key => {
+        const entry = sheets.get(key);
+        if (!entry || entry.filled) return;
+        entry.filled = true;
+        const current = chosenVersion(entry.item, versionsOf(entry.item));
+        entry.body.replaceWith(entry.body = contentBlock(entry.item, current));
+    };
+    for (const it of readerItems) {
+        const current = chosenVersion(it, versionsOf(it));
+        const sheet = el('article', 'cd-page'); sheet.dataset.key = it.key;
+        const meta = [speaker(it.message), `#${it.index}`, new Date(it.archivedAt).toLocaleDateString(), current.label];
+        const body = el('div', 'cd-page-pending');
+        sheet.append(el('h1', 'cd-page-title', itemTitle(it, current.text)), el('p', 'cd-page-meta', meta.join(' · ')), body);
+        content.append(sheet); sheets.set(it.key, { item: it, sheet, body, filled: false });
+    }
+    // Bodies are drawn as they come near the screen, so a long archive opens at once.
+    const observer = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) fill(e.target.dataset.key); }), { root: content, rootMargin: '1200px 0px' });
+    sheets.forEach(({ sheet }) => observer.observe(sheet));
+    const bar = el('header', 'cd-reader-bar');
+    const back = iconButton('back', '목록으로 (Esc)', exitReader, '목록');
+    const navs = [];
+    const makeNav = () => {
+        const nav = el('div', 'cd-reader-nav');
+        const previous = iconButton('left', '이전 메시지', () => goTo(-1));
+        const jump = button('', showReaderList, 'cd-reader-count'); jump.title = '목록에서 골라 이동';
+        const next = iconButton('right', '다음 메시지', () => goTo(1));
+        nav.append(previous, jump, next); navs.push({ previous, jump, next });
+        return nav;
+    };
+    const tools = el('div', 'cd-tools-slot');
+    const setCurrent = key => {
+        const index = readerItems.findIndex(x => x.key === key), it = readerItems[index];
+        if (!it) return;
+        readerKey = key;
+        for (const nav of navs) {
+            nav.jump.replaceChildren(icon('list'), el('span', '', `${index + 1} / ${readerItems.length}`));
+            nav.previous.disabled = index <= 0; nav.next.disabled = index >= readerItems.length - 1;
+        }
+        const versions = versionsOf(it), current = chosenVersion(it, versions);
+        tools.replaceChildren(itemTools(it, versions, current, () => {
+            // Another version of this item: redraw just its sheet.
+            const entry = sheets.get(it.key); const now = chosenVersion(it, versionsOf(it));
+            entry.filled = true; entry.body.replaceWith(entry.body = contentBlock(it, now));
+            entry.sheet.querySelector('.cd-page-meta').textContent = [speaker(it.message), `#${it.index}`, new Date(it.archivedAt).toLocaleDateString(), now.label].join(' · ');
+            setCurrent(it.key);
+        }, true));
+    };
+    const scrollTo = key => { fill(key); sheets.get(key)?.sheet.scrollIntoView({ block: 'start' }); setCurrent(key); };
+    const goTo = step => { const index = readerItems.findIndex(x => x.key === readerKey); const next = readerItems[index + step]; if (next) scrollTo(next.key); };
+    // The item at the top of the screen is the current one (for the counter and the tools).
+    let scrollTimer;
+    content.addEventListener('scroll', () => {
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(() => {
+            const top = content.getBoundingClientRect().top + 40;
+            const at = [...sheets.values()].find(({ sheet }) => sheet.getBoundingClientRect().bottom > top);
+            if (at && at.item.key !== readerKey) setCurrent(at.item.key);
+        }, 80);
+    });
+    content.tabIndex = 0;
+    content.addEventListener('keydown', event => {
+        if (event.target.closest('button,select,input,textarea') || (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft')) return;
+        event.preventDefault(); goTo(event.key === 'ArrowRight' ? 1 : -1);
+    });
+    const foot = el('footer', 'cd-reader-foot'); foot.append(makeNav());
+    bar.append(back, readModeButton(item), makeNav(), tools);
+    dialog.replaceChildren(bar, content, foot, statusLine());
+    content.scrollReader = scrollTo;
+    scrollTo(item.key);
+    content.focus({ preventScroll: true });
+}
+
 function stepReader(direction) {
     const index = readerItems.findIndex(x => x.key === readerKey), next = readerItems[index + direction];
     if (!next) return;
@@ -1306,7 +1417,10 @@ function showReaderList() {
     const list = el('div', 'cd-jump-items');
     let offset = 0;
     const entry = item => {
-        const node = button('', () => showReader(item), 'cd-jump-item');
+        const node = button('', () => {
+            const scroller = dialog.querySelector('.cd-scrolling');
+            if (scroller?.scrollReader) { dismiss(); scroller.scrollReader(item.key); } else showReader(item);
+        }, 'cd-jump-item');
         const text = chosenVersion(item, versionsOf(item)).text;
         node.append(el('strong', '', itemTitle(item, text)), el('span', 'cd-card-meta', `${speaker(item.message)} · #${item.index}`));
         if (item.key === readerKey) node.setAttribute('aria-current', 'true');
@@ -1479,6 +1593,54 @@ function applySettings() {
     document.body.classList.toggle('sideleaf-no-message-button', !settings().messageButton);
     addMessageButtons(true);
 }
+// Archive-only files: a .json that 별지 can import again, or a plain .txt for reading elsewhere.
+function exportItems(items, kind) {
+    if (!items.length) { note('내보낼 항목을 골라주세요.', true); return; }
+    const ctx = context(), base = backupName(ctx, 'sideleaf').replace(/\.jsonl$/, '');
+    let blob, name;
+    if (kind === 'txt') {
+        const text = items.map(item => {
+            const version = versionsOf(item)[0];
+            const meta = [speaker(item.message), `#${item.index ?? item.originalIndex}`, new Date(item.archivedAt).toLocaleString()].join(' · ');
+            return `${itemTitle(item, version.text)}\n${meta}\n\n${version.text}`;
+        }).join('\n\n────────\n\n');
+        blob = new Blob([text], { type: 'text/plain' }); name = `${base}.txt`;
+    } else {
+        blob = new Blob([JSON.stringify(exportArchiveData(currentDrawer(), items))], { type: 'application/json' }); name = `${base}.json`;
+    }
+    const url = URL.createObjectURL(blob), link = document.createElement('a');
+    link.href = url; link.download = name; link.hidden = true;
+    (dialog || document.body).append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    note(`${items.length}개 항목을 내려받았습니다.`);
+}
+function importArchive() {
+    if (isLocked()) return;
+    const input = el('input'); input.type = 'file'; input.accept = '.json,application/json'; input.hidden = true;
+    input.addEventListener('change', async () => {
+        const file = input.files?.[0]; input.remove();
+        if (!file) return;
+        let data;
+        try { data = JSON.parse(await file.text()); } catch { note('별지 파일을 읽지 못했습니다.', true); return; }
+        if (data?.format !== 'sideleaf-archive-1') { note('별지 파일이 아닙니다. 별지에서 내보낸 .json 파일을 골라주세요.', true); return; }
+        commit('import', { data });
+    });
+    (dialog || document.body).append(input); input.click();
+}
+function searchScopeControl(locked) {
+    const wrap = el('span', 'cd-scope'); wrap.title = '검색 기준';
+    const select = el('select'); select.setAttribute('aria-label', '검색 기준'); select.disabled = locked;
+    for (const [key, text] of [['all', '통합'], ['title', '제목'], ['body', '본문']]) { const option = el('option', '', text); option.value = key; select.append(option); }
+    select.value = searchScope;
+    const shown = el('span', 'cd-scope-text', select.selectedOptions[0]?.textContent ?? '통합');
+    select.addEventListener('change', () => {
+        searchScope = select.value; context().accountStorage?.setItem('sideleaf.searchScope', searchScope);
+        page = 0; expanded.clear(); render();
+    });
+    wrap.append(shown, icon('down'), select);
+    return wrap;
+}
+
 function settingsScreen() {
     if (busy || pending) return;
     editing = 'settings';
@@ -1510,6 +1672,12 @@ function settingsScreen() {
         ...(ctx.groupId != null ? [el('p', 'cd-hint', '그룹 채팅에서는 언제나 채팅별로 보여 줍니다.')] : [])));
     const split = ctx.chatMetadata?.[KEY]?.version === 2;
     const backup = iconButton('download', '활성 채팅과 별지 전체를 JSONL 한 파일로 내려받기', exportArchive, '통합 백업 받기');
+    const exportAll = iconButton('download', '이 채팅의 별지 전체를 별지 파일로 내려받기', () => exportItems(archiveItems(), 'json'), '별지 파일');
+    const exportText = iconButton('copy', '이 채팅의 별지 전체를 텍스트 파일로 내려받기', () => exportItems(archiveItems(), 'txt'), '텍스트');
+    const importButton = iconButton('upload', '별지 파일을 이 채팅의 별지에 더하기', importArchive, '불러오기');
+    exportAll.disabled = exportText.disabled = !currentDrawer().items.length;
+    const fileRow = el('div', 'cd-setting-row'); fileRow.append(exportAll, exportText, importButton);
+    body.append(section('별지만 내보내기 · 불러오기', fileRow, el('p', 'cd-hint', '일부만 내보내려면 편집에서 항목을 고른 뒤 내보내기를 누릅니다. 불러온 항목은 이 채팅의 별지에 더해집니다.')));
     const nodes = [el('p', 'cd-hint', split
         ? '이 채팅의 별지는 채팅 파일과 따로 저장되어 있어, 일반 채팅 내보내기에는 빠집니다. 다른 서버로 옮기거나 백업할 때는 통합 백업을 쓰세요.'
         : '이 채팅의 별지는 아직 채팅 파일 안에 있습니다. 분리 저장으로 바꾸면 평소 채팅 로딩이 가벼워지고, 보관·수정할 때도 자동으로 바뀝니다.'), backup];
