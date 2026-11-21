@@ -1371,16 +1371,18 @@ function showScrollReader(item) {
             setCurrent(it.key);
         }, true));
     };
-    // A chosen item stays current while the jump settles, even if it is too short to reach the top (the last ones).
-    let pinnedUntil = 0;
-    const scrollTo = key => { fill(key); pinnedUntil = Date.now() + 600; sheets.get(key)?.sheet.scrollIntoView({ block: 'start' }); setCurrent(key); };
+    // A chosen item stays current until the reader scrolls by hand: images and screens still loading above it
+    // shift the page, and the last items are too short to reach the top.
+    let pinned = false;
+    const scrollTo = key => { fill(key); pinned = true; sheets.get(key)?.sheet.scrollIntoView({ block: 'start' }); setCurrent(key); };
+    for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) content.addEventListener(type, () => { pinned = false; }, { passive: true });
     const goTo = step => { const index = readerItems.findIndex(x => x.key === readerKey); const next = readerItems[index + step]; if (next) scrollTo(next.key); };
     // The item at the top of the screen is the current one (for the counter and the tools).
     let scrollTimer;
     content.addEventListener('scroll', () => {
         clearTimeout(scrollTimer);
         scrollTimer = setTimeout(() => {
-            if (Date.now() < pinnedUntil) return;
+            if (pinned) return;
             const top = content.getBoundingClientRect().top + 40;
             const at = [...sheets.values()].find(({ sheet }) => sheet.getBoundingClientRect().bottom > top);
             if (at && at.item.key !== readerKey) setCurrent(at.item.key);
