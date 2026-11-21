@@ -1567,7 +1567,12 @@ function chatAppearance() {
     out['--sl-base'] = color;
     out['--sl-layers'] = layers.length ? layers.join(',') : 'none';
     const message = chat.querySelector('.mes');
-    if (message) out['--sl-message-bg'] = getComputedStyle(message).backgroundColor;
+    if (message) {
+        // Read the settled colour: a theme switch may still be fading the message (its transition is paused for the read).
+        const transition = message.style.transition; message.style.transition = 'none';
+        out['--sl-message-bg'] = getComputedStyle(message).backgroundColor;
+        message.style.transition = transition;
+    }
     return out;
 }
 
