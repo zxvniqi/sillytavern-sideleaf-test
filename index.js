@@ -1717,7 +1717,7 @@ function importArchive() {
         if (!file) return;
         let data;
         try { data = JSON.parse(await file.text()); } catch { note('백업 파일을 읽지 못했습니다.', true); return; }
-        if (data?.format !== 'sideleaf-archive-1') { note('별지 백업 파일이 아닙니다. 백업 받기로 만든 .json 파일을 골라주세요.', true); return; }
+        if (data?.format !== 'sideleaf-archive-1') { note('별지 백업 파일이 아닙니다. 별지에서 받은 .json 파일을 골라주세요.', true); return; }
         let added;
         try { added = importPlan([], currentDrawer(), data, id).affected.length; } catch (error) { note(error.message, true); return; }
         // Everything in the file is already here: nothing to save.
