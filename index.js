@@ -1,4 +1,4 @@
-import { KEY, PAGE_SIZE, readDrawer, itemTitle, archivePlan, restorePlan, chatIdentity, preview, readingVersions, editPlan, deletePlan, orderedItems, reorderPlan, folderPlan, folderOf, exportArchiveData, importPlan } from './model.js';
+import { KEY, PAGE_SIZE, PICK_PAGE_SIZE, readDrawer, itemTitle, archivePlan, restorePlan, chatIdentity, preview, readingVersions, editPlan, deletePlan, orderedItems, reorderPlan, folderPlan, folderOf, exportArchiveData, importPlan } from './model.js';
 import { icon } from './icons.js';
 import { installQrSource } from './qr-source.js';
 import { readableText, fullDetailsText } from './reading-text.js';
@@ -22,9 +22,9 @@ let dialog;
 let busy = false;
 let view = 'archive';
 let page = 0;
-// Picking messages out of a chat wants more on one page than reading the archive does.
-const PICK_PAGE_SIZE = 30;
-let listWatch = null;
+// Watchers of what is on screen (the list's end, the scroll reader's sheets): one of each at most.
+let listWatch = null, readerWatch = null;
+const stopWatching = () => { listWatch?.disconnect(); readerWatch?.disconnect(); listWatch = readerWatch = null; };
 // "#12", or nothing for an item that came without a message number (e.g. from a hand-made file).
 const numberLabel = item => { const n = item.index ?? item.originalIndex; return n === undefined || n === null ? '' : `#${n}`; };
 let openedChat = null;
@@ -407,7 +407,7 @@ function close(discardEdit = false) {
     if (busy || pending) { note('저장을 확인한 뒤 닫아주세요.', true); return; }
     if (editing && !discardEdit) { note('편집을 저장하거나 취소한 뒤 닫아주세요.', true); return; }
     clearTimeout(searchTimer);
-    themeWatch?.stop(); listWatch?.disconnect(); listWatch = null;
+    themeWatch?.stop(); stopWatching();
     dialog?.close(); dialog?.remove(); dialog = null;
     if (mirror) mirror.style.disabled = true;
     clearArchiveCache();
@@ -468,7 +468,9 @@ function watchTheme() {
     // Once soon, and again after slower theme scripts have repainted the messages.
     const refresh = () => { timers.forEach(clearTimeout); timers = [setTimeout(measure, 400), setTimeout(measure, 1800)]; };
     const own = node => node.id === 'sideleaf-chat-style' || node.parentNode?.id === 'sideleaf-chat-style';
-    const observer = new MutationObserver(records => { if (records.some(r => !own(r.target) && ![...r.addedNodes, ...r.removedNodes].every(own) || r.type === 'attributes')) refresh(); });
+    // Everything but 별지's own mirrored sheet: attributes, a sheet added or removed, a sheet's text rewritten.
+    const foreign = record => record.type === 'attributes' || (!own(record.target) && (record.type === 'characterData' || [...record.addedNodes, ...record.removedNodes].some(node => !own(node))));
+    const observer = new MutationObserver(records => { if (records.some(foreign)) refresh(); });
     observer.observe(document.documentElement, { attributes: true });
     observer.observe(document.body, { attributes: true });
     observer.observe(document.head, { childList: true, subtree: true, characterData: true });
@@ -602,7 +604,7 @@ function render() {
     for (const item of filtered.slice(page * size, (page + 1) * size)) list.append(row(item));
     // A mark at the end of the list: while it is out of sight, the list fades at the bottom (more below).
     const tail = el('div', 'cd-list-end'); list.append(tail);
-    listWatch?.disconnect();
+    stopWatching();
     listWatch = new IntersectionObserver(([entry]) => list.classList.toggle('cd-more-below', !entry.isIntersecting), { root: list });
     listWatch.observe(tail);
     if (!filtered.length) {
@@ -1299,8 +1301,9 @@ function readModeButton(item) {
     toggle.classList.add('cd-read-mode');
     return toggle;
 }
+const pageMeta = (item, version) => [speaker(item.message), numberLabel(item), new Date(item.archivedAt).toLocaleDateString(), version.label].filter(Boolean).join(' · ');
 function prepareReader(item) {
-    clearTimeout(searchTimer);
+    clearTimeout(searchTimer); stopWatching();
     const revision = currentDrawer().revision;
     // Rebuild whenever the item is missing too, so paging never shows "0 / 0".
     if (!reader || readerRevision !== revision || !readerItems.some(x => x.key === item.key)) {
@@ -1334,8 +1337,7 @@ function showReader(item) {
     bar.append(back, makeNav(), withReadMode(itemTools(item, versions, current, () => showReader(item), true), item));
     const content = el('div', 'cd-reading-content');
     const sheet = el('article', 'cd-page');
-    const meta = [speaker(item.message), numberLabel(item), new Date(item.archivedAt).toLocaleDateString(), current.label].filter(Boolean);
-    sheet.append(el('h1', 'cd-page-title', itemTitle(item, current.text)), el('p', 'cd-page-meta', meta.join(' · ')), contentBlock(item, current));
+    sheet.append(el('h1', 'cd-page-title', itemTitle(item, current.text)), el('p', 'cd-page-meta', pageMeta(item, current)), contentBlock(item, current));
     content.append(sheet);
     const controls = 'button,select,input,textarea';
     // Horizontal touch swipes page through items; vertical scrolling stays native.
@@ -1382,14 +1384,13 @@ function showScrollReader(item) {
         if (sheets.size) content.append(el('hr', 'cd-page-divider'));
         const current = chosenVersion(it, versionsOf(it));
         const sheet = el('article', 'cd-page'); sheet.dataset.key = it.key;
-        const meta = [speaker(it.message), numberLabel(it), new Date(it.archivedAt).toLocaleDateString(), current.label].filter(Boolean);
         const body = el('div', 'cd-page-pending');
-        sheet.append(el('h1', 'cd-page-title', itemTitle(it, current.text)), el('p', 'cd-page-meta', meta.join(' · ')), body);
+        sheet.append(el('h1', 'cd-page-title', itemTitle(it, current.text)), el('p', 'cd-page-meta', pageMeta(it, current)), body);
         content.append(sheet); sheets.set(it.key, { item: it, sheet, body, filled: false });
     }
     // Bodies are drawn as they come near the screen, so a long archive opens at once.
-    const observer = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) fill(e.target.dataset.key); }), { root: content, rootMargin: '1200px 0px' });
-    sheets.forEach(({ sheet }) => observer.observe(sheet));
+    readerWatch = new IntersectionObserver(entries => entries.forEach(e => { if (e.isIntersecting) fill(e.target.dataset.key); }), { root: content, rootMargin: '1200px 0px' });
+    sheets.forEach(({ sheet }) => readerWatch.observe(sheet));
     const bar = el('header', 'cd-reader-bar');
     const back = iconButton('back', '목록으로 (Esc)', exitReader, '목록');
     const navs = [];
@@ -1415,7 +1416,7 @@ function showScrollReader(item) {
             // Another version of this item: redraw just its sheet.
             const entry = sheets.get(it.key); const now = chosenVersion(it, versionsOf(it));
             entry.filled = true; entry.body.replaceWith(entry.body = contentBlock(it, now));
-            entry.sheet.querySelector('.cd-page-meta').textContent = [speaker(it.message), numberLabel(it), new Date(it.archivedAt).toLocaleDateString(), now.label].filter(Boolean).join(' · ');
+            entry.sheet.querySelector('.cd-page-meta').textContent = pageMeta(it, now);
             setCurrent(it.key);
         }, true), it));
     };

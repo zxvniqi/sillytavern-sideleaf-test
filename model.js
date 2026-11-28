@@ -1,6 +1,11 @@
 export const KEY = 'sideleaf_v1';
-// Lists (archive, message picker, reader list, scroll reading) show this many items per page.
+// The archive list, the reader's list and scroll reading show this many items per page.
 export const PAGE_SIZE = 10;
+// Picking messages out of a chat wants more on one page than reading the archive does.
+export const PICK_PAGE_SIZE = 30;
+// Fields the screen adds to an item while showing it; they are never stored or exported.
+const VIEW_FIELDS = ['key', 'index', 'otherChat'];
+const stored = item => { const copy = structuredClone(item); for (const name of VIEW_FIELDS) delete copy[name]; return copy; };
 
 export function readDrawer(metadata) {
     const data = metadata?.[KEY];
@@ -212,13 +217,13 @@ export const ARCHIVE_FORMAT = 'sideleaf-archive-1';
 export function exportArchiveData(drawer, items, now = Date.now()) {
     const used = new Set(items.map(item => folderOf(drawer, item)).filter(Boolean));
     const folders = (drawer.folders || []).filter(folder => used.has(folder.id));
-    return { format: ARCHIVE_FORMAT, exportedAt: now, folders, items: items.map(item => structuredClone(item)) };
+    return { format: ARCHIVE_FORMAT, exportedAt: now, folders, items: items.map(stored) };
 }
 // Adds the items of such a file with new ids. Items already here (same message and archive time) are skipped,
 // so importing the same file twice adds nothing; folders join an existing folder of the same name.
 export function importPlan(chat, drawer, data, idFactory) {
-    if (data?.format !== ARCHIVE_FORMAT || !Array.isArray(data.items)) throw new Error('별지 파일이 아닙니다.');
-    if (data.items.some(item => !item?.message || typeof item.message !== 'object')) throw new Error('별지 파일 일부가 손상되어 불러오지 않았습니다.');
+    if (data?.format !== ARCHIVE_FORMAT || !Array.isArray(data.items)) throw new Error('별지 백업 파일이 아닙니다.');
+    if (data.items.some(item => !item?.message || typeof item.message !== 'object')) throw new Error('백업 파일 일부가 손상되어 불러오지 않았습니다.');
     const folders = [...(drawer.folders || [])];
     const folderIds = new Map();
     for (const folder of Array.isArray(data.folders) ? data.folders : []) {
@@ -233,7 +238,7 @@ export function importPlan(chat, drawer, data, idFactory) {
         const key = `${source.archivedAt}\u0000${JSON.stringify(source.message)}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        const { id: _, folder, ...rest } = structuredClone(source);
+        const { id: _, folder, ...rest } = stored(source);
         const item = { ...rest, id: idFactory(), archivedAt: Number.isFinite(source.archivedAt) ? source.archivedAt : Date.now() };
         if (folderIds.has(folder)) item.folder = folderIds.get(folder);
         added.push(item);
