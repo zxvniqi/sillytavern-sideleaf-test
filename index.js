@@ -849,12 +849,46 @@ function declarations(style, keep) {
     }
     return out.join('; ');
 }
+// 별지 is drawn outside the chat's own containers (#sheld and the like), so a rule that names one of them
+// (#sheld #chat .mes_text q) would never apply to the mirrored body. Such steps are taken as met and
+// dropped; steps about the page itself (html.some-theme, body.x) stay and keep deciding.
+const MIRROR_ANY = /\.cd-(?:mirror|mes|mblock|mtext)(?![\w-])/;
+function withoutChatContainers(selector) {
+    const chat = document.getElementById('chat');
+    if (!chat?.parentElement) return selector;
+    // Compounds with the combinator that leads to each, split outside () [] and quotes.
+    const steps = []; let depth = 0, quote = '', start = 0, lead = '';
+    const push = end => { const compound = selector.slice(start, end).trim(); if (compound) { steps.push({ lead, compound }); lead = ''; } };
+    for (let i = 0; i < selector.length; i++) {
+        const c = selector[i];
+        if (quote) { if (c === '\\') i++; else if (c === quote) quote = ''; continue; }
+        if (c === '"' || c === '\'') quote = c;
+        else if (c === '(' || c === '[') depth++;
+        else if (c === ')' || c === ']') depth--;
+        else if (!depth && /[\s>+~]/.test(c)) { push(i); if (c.trim()) lead = c; start = i + 1; }
+    }
+    push(selector.length);
+    const first = steps.findIndex(step => MIRROR_ANY.test(step.compound));
+    if (first <= 0) return selector;
+    let dropped = false, out = '';
+    steps.forEach((step, i) => {
+        if (i < first) {
+            let hit = null;
+            try { hit = chat.parentElement.closest(step.compound); } catch { /* not a plain compound: kept */ }
+            if (hit && hit !== document.body && hit !== document.documentElement) { dropped = true; return; }
+        }
+        // After a dropped step, what follows hangs off the last kept step as a descendant.
+        const join = dropped ? '' : step.lead; dropped = false;
+        out += (out ? (join ? ' ' + join + ' ' : ' ') : '') + step.compound;
+    });
+    return out;
+}
 function mirrorStyle(selectorText, style) {
     if (!style?.length || !MIRROR_TOUCH.test(selectorText)) return [];
     const groups = { frame: [], text: [], inner: [] };
     for (const part of topLevel(selectorText, /,/)) {
         if (!MIRROR_TOUCH.test(part)) continue; // already applies inside 별지 as written
-        const renamed = MIRROR_NAMES.reduce((text, [from, to]) => text.replace(from, to), part.trim());
+        const renamed = withoutChatContainers(MIRROR_NAMES.reduce((text, [from, to]) => text.replace(from, to), part.trim()));
         const subject = topLevel(renamed, /[\s>+~]/).filter(Boolean).pop() || '';
         // Pseudo-elements of the text box (ornaments, labels) come over whole.
         const box = subject.includes('.cd-mtext') && !subject.includes('::');
@@ -919,7 +953,10 @@ function measureChatStyles() {
     let base;
     try {
         const computed = getComputedStyle(text);
-        base = `:where(#sideleaf-dialog) .cd-rich { ${BASE_PROPS.map(prop => `${prop}: ${computed.getPropertyValue(prop)}`).join('; ')} }`;
+        // The fill colour follows the text colour unless a theme sets it apart. Copied as a fixed colour it would
+        // be inherited by quotes and emphasis and paint them in the body colour, whatever colour they have.
+        const fill = computed.getPropertyValue('-webkit-text-fill-color'), plain = fill === computed.getPropertyValue('color');
+        base = `:where(#sideleaf-dialog) .cd-rich { ${BASE_PROPS.filter(prop => !(plain && prop === '-webkit-text-fill-color')).map(prop => `${prop}: ${computed.getPropertyValue(prop)}`).join('; ')} }`;
     } finally { probe?.remove(); }
     const sheets = pageSheets();
     const signature = `${sheets.length}|${sheets.reduce((sum, [, rules]) => sum + rules.length, 0)}|${document.getElementById('custom-style')?.textContent.length ?? ''}`;
