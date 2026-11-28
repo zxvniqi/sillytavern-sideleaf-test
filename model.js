@@ -168,6 +168,15 @@ export function preview(message, limit = 160) {
     return text.slice(0, limit) || '(본문 없는 메시지)';
 }
 
+// The script most of a text is written in (Hangul, Latin, Han, kana, Cyrillic), markup and code left out;
+// -1 when there is too little to tell.
+const SCRIPTS = [/[\uac00-\ud7a3]/g, /[A-Za-z]/g, /[\u4e00-\u9fff]/g, /[\u3040-\u30ff]/g, /[\u0400-\u04ff]/g];
+function mainScript(text) {
+    const plain = String(text ?? '').replace(/<style[\s\S]*?<\/style>|```[\s\S]*?```|<[^>]*>/gi, ' ');
+    const counts = SCRIPTS.map(script => plain.match(script)?.length ?? 0), most = Math.max(...counts);
+    return most >= 20 ? counts.indexOf(most) : -1;
+}
+
 export function readingVersions(item) {
     const versions = [];
     // Versions changed in 별지 carry a "(수정)" mark so the edit stays visible.
@@ -179,8 +188,13 @@ export function readingVersions(item) {
     if (typeof translated === 'string' && translated.trim() && translated !== item.message.mes) versions.push({ key: 'translation', label: label('translation', '번역·표시문'), text: translated });
     // The original is rendered like the chat (formatting, regex screens), so it leads; the plain-text
     // screen capture stays available for display-only changes such as on-screen translations.
-    versions.push({ key: 'original', label: label('original', '원문'), text: String(item.message?.mes ?? '') });
-    if (item.screenText?.trim() && !versions.some(v => v.text === item.screenText)) versions.push({ key:'screen', label:label('screen', '보관 당시 화면'), text:item.screenText });
+    const original = { key: 'original', label: label('original', '원문'), text: String(item.message?.mes ?? '') };
+    const screen = item.screenText?.trim() && ![...versions, original].some(v => v.text === item.screenText) ? { key:'screen', label:label('screen', '보관 당시 화면'), text:item.screenText } : null;
+    // A translation that was only on screen (nothing stored in the message) is what was being read, so it
+    // leads: taken as one when the screen is in another script than the original.
+    const from = mainScript(original.text), to = screen ? mainScript(screen.text) : -1;
+    const screenFirst = screen && !versions.some(v => v.key === 'translation') && from >= 0 && to >= 0 && from !== to;
+    versions.push(...(screenFirst ? [screen, original] : screen ? [original, screen] : [original]));
     return versions;
 }
 
