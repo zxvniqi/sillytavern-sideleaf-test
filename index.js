@@ -22,6 +22,11 @@ let dialog;
 let busy = false;
 let view = 'archive';
 let page = 0;
+// Picking messages out of a chat wants more on one page than reading the archive does.
+const PICK_PAGE_SIZE = 30;
+let listWatch = null;
+// "#12", or nothing for an item that came without a message number (e.g. from a hand-made file).
+const numberLabel = item => { const n = item.index ?? item.originalIndex; return n === undefined || n === null ? '' : `#${n}`; };
 let openedChat = null;
 let selected = new Set();
 let snapshot = [];
@@ -402,7 +407,7 @@ function close(discardEdit = false) {
     if (busy || pending) { note('저장을 확인한 뒤 닫아주세요.', true); return; }
     if (editing && !discardEdit) { note('편집을 저장하거나 취소한 뒤 닫아주세요.', true); return; }
     clearTimeout(searchTimer);
-    themeWatch?.stop();
+    themeWatch?.stop(); listWatch?.disconnect(); listWatch = null;
     dialog?.close(); dialog?.remove(); dialog = null;
     if (mirror) mirror.style.disabled = true;
     clearArchiveCache();
@@ -531,7 +536,7 @@ function render() {
     const toolbar = el('div', 'cd-toolbar');
     const field = el('label', 'cd-search-field'); field.append(icon('search'));
     const input = el('input', 'cd-search'); input.type = 'search'; input.value = search; input.disabled = locked;
-    input.placeholder = view === 'archive' ? '검색' : '메시지 내용·이름으로 찾기'; input.setAttribute('aria-label', input.placeholder);
+    input.placeholder = '검색'; input.setAttribute('aria-label', view === 'archive' ? '보관함에서 찾기' : '메시지 내용·이름으로 찾기');
     const updateSearch = () => {
         clearTimeout(searchTimer);
         if (composing) return;
@@ -591,9 +596,15 @@ function render() {
     }
 
     const list = el('div', 'cd-list'); list.setAttribute('aria-label', view === 'archive' ? '보관 메시지' : '보관할 메시지 고르기');
-    const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const size = view === 'archive' ? PAGE_SIZE : PICK_PAGE_SIZE;
+    const pages = Math.max(1, Math.ceil(filtered.length / size));
     page = Math.min(page, pages - 1);
-    for (const item of filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) list.append(row(item));
+    for (const item of filtered.slice(page * size, (page + 1) * size)) list.append(row(item));
+    // A mark at the end of the list: while it is out of sight, the list fades at the bottom (more below).
+    const tail = el('div', 'cd-list-end'); list.append(tail);
+    listWatch?.disconnect();
+    listWatch = new IntersectionObserver(([entry]) => list.classList.toggle('cd-more-below', !entry.isIntersecting), { root: list });
+    listWatch.observe(tail);
     if (!filtered.length) {
         const empty = el('div', 'cd-empty'); empty.append(icon(query ? 'search' : 'star'));
         if (query) empty.append(el('p', '', '검색 결과가 없습니다.'));
@@ -1103,7 +1114,7 @@ function row(item) {
     const head = el(selecting ? 'label' : 'div', 'cd-card-head');
     if (selecting) {
         const check = el('input', 'cd-check'); check.type = 'checkbox'; check.checked = selected.has(item.key); check.disabled = locked;
-        check.setAttribute('aria-label', `메시지 #${item.index} 선택`);
+        check.setAttribute('aria-label', `메시지 ${numberLabel(item)} 선택`);
         check.addEventListener('change', () => { if (check.checked) selected.add(item.key); else selected.delete(item.key); updateSelection(); });
         head.append(check);
     } else {
@@ -1116,7 +1127,7 @@ function row(item) {
     if (archive) {
         // Untitled items show the opening text once, as a two-line title, instead of repeating it below.
         main.append(el('strong', `cd-card-title${item.title ? '' : ' cd-untitled'}`, itemTitle(item, current.text, 200)));
-        const meta = [name, `#${item.index}`, new Date(item.archivedAt).toLocaleDateString()];
+        const meta = [name, numberLabel(item), new Date(item.archivedAt).toLocaleDateString()].filter(Boolean);
         if (versions.length > 1) meta.push(current.label);
         const line = el('span', 'cd-card-meta');
         const folderName = !otherChat(item) && folderView === 'all' && currentDrawer().folders?.find(folder => folder.id === item.folder)?.name;
@@ -1126,7 +1137,7 @@ function row(item) {
         line.append(meta.join(' · '));
         main.append(line);
     } else {
-        const line = el('span', 'cd-card-title'); line.append(el('strong', '', name), el('span', 'cd-number', `#${item.index}`));
+        const line = el('span', 'cd-card-title'); line.append(el('strong', '', name), el('span', 'cd-number', numberLabel(item)));
         main.append(line);
     }
     if (!open && !(archive && !item.title)) main.append(el('p', 'cd-snippet', preview({ mes: current.text }, 220)));
@@ -1323,7 +1334,7 @@ function showReader(item) {
     bar.append(back, makeNav(), withReadMode(itemTools(item, versions, current, () => showReader(item), true), item));
     const content = el('div', 'cd-reading-content');
     const sheet = el('article', 'cd-page');
-    const meta = [speaker(item.message), `#${item.index}`, new Date(item.archivedAt).toLocaleDateString(), current.label];
+    const meta = [speaker(item.message), numberLabel(item), new Date(item.archivedAt).toLocaleDateString(), current.label].filter(Boolean);
     sheet.append(el('h1', 'cd-page-title', itemTitle(item, current.text)), el('p', 'cd-page-meta', meta.join(' · ')), contentBlock(item, current));
     content.append(sheet);
     const controls = 'button,select,input,textarea';
@@ -1371,7 +1382,7 @@ function showScrollReader(item) {
         if (sheets.size) content.append(el('hr', 'cd-page-divider'));
         const current = chosenVersion(it, versionsOf(it));
         const sheet = el('article', 'cd-page'); sheet.dataset.key = it.key;
-        const meta = [speaker(it.message), `#${it.index}`, new Date(it.archivedAt).toLocaleDateString(), current.label];
+        const meta = [speaker(it.message), numberLabel(it), new Date(it.archivedAt).toLocaleDateString(), current.label].filter(Boolean);
         const body = el('div', 'cd-page-pending');
         sheet.append(el('h1', 'cd-page-title', itemTitle(it, current.text)), el('p', 'cd-page-meta', meta.join(' · ')), body);
         content.append(sheet); sheets.set(it.key, { item: it, sheet, body, filled: false });
@@ -1404,7 +1415,7 @@ function showScrollReader(item) {
             // Another version of this item: redraw just its sheet.
             const entry = sheets.get(it.key); const now = chosenVersion(it, versionsOf(it));
             entry.filled = true; entry.body.replaceWith(entry.body = contentBlock(it, now));
-            entry.sheet.querySelector('.cd-page-meta').textContent = [speaker(it.message), `#${it.index}`, new Date(it.archivedAt).toLocaleDateString(), now.label].join(' · ');
+            entry.sheet.querySelector('.cd-page-meta').textContent = [speaker(it.message), numberLabel(it), new Date(it.archivedAt).toLocaleDateString(), now.label].filter(Boolean).join(' · ');
             setCurrent(it.key);
         }, true), it));
     };
@@ -1440,9 +1451,9 @@ function showScrollReader(item) {
     dialog.replaceChildren(bar, content, foot, statusLine());
     if (pageCount > 1) {
         const pager = el('div', 'cd-pagination cd-scroll-pages');
-        const previous = iconButton('left', '이전 페이지', () => showScrollReader(readerItems[(pageNo - 1) * PAGE_SIZE])); previous.disabled = pageNo === 0;
-        const next = iconButton('right', '다음 페이지', () => showScrollReader(readerItems[(pageNo + 1) * PAGE_SIZE])); next.disabled = pageNo >= pageCount - 1;
-        pager.append(previous, el('span', 'cd-page-count', `${pageNo + 1} / ${pageCount}`), next);
+        const after = Math.min(PAGE_SIZE, readerItems.length - (pageNo + 1) * PAGE_SIZE);
+        if (pageNo > 0) pager.append(iconButton('up', '앞의 항목 이어보기', () => showScrollReader(readerItems[(pageNo - 1) * PAGE_SIZE]), `이전 ${PAGE_SIZE}개`));
+        if (after > 0) pager.append(iconButton('down', '다음 항목 이어보기', () => showScrollReader(readerItems[(pageNo + 1) * PAGE_SIZE]), `다음 ${after}개`));
         content.append(pager);
     }
     content.scrollReader = key => { if (sheets.has(key)) scrollTo(key); else { const it = readerItems.find(x => x.key === key); if (it) showScrollReader(it); } };
@@ -1460,14 +1471,15 @@ function stepReader(direction) {
 
 function showReaderList() {
     if (dialog.querySelector('.cd-jump')) return;
-    const popup = el('section', 'cd-jump'); popup.setAttribute('role', 'dialog'); popup.setAttribute('aria-label', '메시지 목록');
+    const popup = el('section', 'cd-jump'); popup.setAttribute('role', 'dialog'); popup.tabIndex = -1; popup.setAttribute('aria-label', '메시지 목록');
     const shade = el('div', 'cd-shade');
     const dismiss = () => { shade.remove(); popup.remove(); dialog.querySelector('.cd-reading-content')?.focus(); };
     shade.addEventListener('click', dismiss);
     popup.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); dismiss(); } });
     const field = el('label', 'cd-search-field'); field.append(icon('search'));
     const input = el('input', 'cd-search'); input.type = 'search'; input.placeholder = '목록에서 찾기'; input.setAttribute('aria-label', '목록에서 찾기');
-    field.append(input);
+    let scope = 'all';
+    field.append(input, searchScopeControl(false, scope, value => { scope = value; offset = 0; draw(); }));
     const list = el('div', 'cd-jump-items');
     // Page buttons sit under the list, outside its scroll, so long titles never push them out of view.
     const pager = el('div', 'cd-jump-pager');
@@ -1480,12 +1492,12 @@ function showReaderList() {
             if (scroller?.scrollReader) { shade.remove(); popup.remove(); scroller.scrollReader(item.key); scroller.focus({ preventScroll: true }); } else showReader(item);
         }, 'cd-jump-item');
         const text = chosenVersion(item, versionsOf(item)).text;
-        node.append(el('strong', '', itemTitle(item, text)), el('span', 'cd-card-meta', `${speaker(item.message)} · #${item.index}`));
+        node.append(el('strong', '', itemTitle(item, text)), el('span', 'cd-card-meta', [speaker(item.message), numberLabel(item)].filter(Boolean).join(' · ')));
         if (item.key === readerKey) node.setAttribute('aria-current', 'true');
         return node;
     };
     const draw = () => {
-        const found = readerItems.filter(item => matchesQuery(item, input.value));
+        const found = readerItems.filter(item => matchesQuery(item, input.value, scope));
         list.replaceChildren(...found.slice(offset, offset + perPage).map(entry)); list.scrollTop = 0;
         if (!found.length) list.append(el('p', 'cd-hint', '찾는 항목이 없습니다.'));
         pager.replaceChildren();
@@ -1516,7 +1528,8 @@ function showReaderList() {
         }
         popup.classList.remove('cd-measuring');
     }
-    input.focus();
+    // Typing devices start in the search field; on touch screens that would raise the keyboard over the list.
+    if (matchMedia('(pointer: coarse)').matches) popup.focus(); else input.focus();
 }
 let listFit = null;
 
@@ -1681,8 +1694,8 @@ function exportItems(items, kind) {
     let blob, name;
     if (kind === 'txt') {
         const text = items.map(item => {
-            const version = versionsOf(item)[0];
-            const meta = [speaker(item.message), `#${item.index ?? item.originalIndex}`, new Date(item.archivedAt).toLocaleString()].join(' · ');
+            const version = chosenVersion(item, versionsOf(item));
+            const meta = [speaker(item.message), numberLabel(item), new Date(item.archivedAt).toLocaleString()].filter(Boolean).join(' · ');
             return `${itemTitle(item, version.text)}\n${meta}\n\n${version.text}`;
         }).join('\n\n────────\n\n');
         blob = new Blob([text], { type: 'text/plain' }); name = `${base}.txt`;
@@ -1712,13 +1725,14 @@ function importArchive() {
     });
     (dialog || document.body).append(input); input.click();
 }
-function searchScopeControl(locked) {
+function searchScopeControl(locked, value = searchScope, onChange = null) {
     const wrap = el('span', 'cd-scope'); wrap.title = '검색 기준';
     const select = el('select'); select.setAttribute('aria-label', '검색 기준'); select.disabled = locked;
     for (const [key, text] of [['all', '통합'], ['title', '제목'], ['body', '본문']]) { const option = el('option', '', text); option.value = key; select.append(option); }
-    select.value = searchScope;
+    select.value = value;
     const shown = el('span', 'cd-scope-text', select.selectedOptions[0]?.textContent ?? '통합');
     select.addEventListener('change', () => {
+        if (onChange) { shown.textContent = select.selectedOptions[0]?.textContent ?? ''; onChange(select.value); return; }
         searchScope = select.value; context().accountStorage?.setItem('sideleaf.searchScope', searchScope);
         page = 0; expanded.clear(); render();
     });
@@ -1762,7 +1776,7 @@ function settingsScreen() {
     const importButton = iconButton('upload', '별지 백업 파일(.json)을 이 채팅의 별지에 더합니다.', importArchive, '불러오기');
     exportAll.disabled = exportText.disabled = !currentDrawer().items.length;
     const fileRow = el('div', 'cd-setting-row'); fileRow.append(exportAll, exportText, importButton);
-    body.append(section('별지만 내보내기 · 불러오기', fileRow, el('p', 'cd-hint', '일부만 내보내려면 편집에서 항목을 고른 뒤 내보내기를 누릅니다. 불러온 항목은 이 채팅의 별지에 더해집니다.')));
+    body.append(section('별지 백업', fileRow, el('p', 'cd-hint', '일부만 내보내려면 편집에서 항목을 고른 뒤 내보내기를 누릅니다. 불러온 항목은 이 채팅의 별지에 더해집니다.')));
     const nodes = [el('p', 'cd-hint', split
         ? '이 채팅의 별지는 채팅 파일과 따로 저장되어 있어, 일반 채팅 내보내기에는 빠집니다. 다른 서버로 옮기거나 백업할 때는 통합 백업을 쓰세요.'
         : '이 채팅의 별지는 아직 채팅 파일 안에 있습니다. 분리 저장으로 바꾸면 평소 채팅 로딩이 가벼워지고, 보관·수정할 때도 자동으로 바뀝니다.'), backup];

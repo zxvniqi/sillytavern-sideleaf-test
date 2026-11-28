@@ -362,3 +362,8 @@ body.sideleaf-no-message-button .sideleaf-archive-button { display: none !import
 #sideleaf-dialog .cd-jump-pager { flex-shrink: 0; }
 #sideleaf-dialog .cd-jump-pager:empty { display: none; }
 #sideleaf-dialog .cd-jump-pager .cd-pagination { padding: 2px 0 0; }
+/* More items below the visible part of the list: its bottom edge fades out. */
+#sideleaf-dialog .cd-list-end { flex: 0 0 1px; margin-top: -9px; pointer-events: none; }
+#sideleaf-dialog .cd-list.cd-more-below { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
+#sideleaf-dialog .cd-jump:focus { outline: none; }
+#sideleaf-dialog .cd-scroll-pages { gap: 8px; }
